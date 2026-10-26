@@ -7,6 +7,7 @@ A RESTful API in Go for managing users, with MongoDB for persistence and JWT (HS
 - Passwords hashed with bcrypt; JWT access tokens signed with HS256
 - Request logging middleware and a background goroutine that logs the user count every 10 seconds
 - Hexagonal architecture (ports and adapters), unit tests with hand-written fakes
+- A gRPC server alongside REST, with `CreateUser` and `GetUser`
 
 ## Contents
 
@@ -16,6 +17,7 @@ A RESTful API in Go for managing users, with MongoDB for persistence and JWT (HS
 - [API reference](#api-reference)
 - [JWT guide](#jwt-guide)
 - [Sample requests and responses](#sample-requests-and-responses)
+- [gRPC API](#grpc-api)
 - [Testing](#testing)
 - [Architecture](#architecture)
 - [Assumptions and design decisions](#assumptions-and-design-decisions)
@@ -56,7 +58,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The API is on `localhost:8080` (set `API_PORT` in `.env` if that port is taken). The placeholder `JWT_SECRET` in `.env.example` is deliberately too short, so the API refuses to start until you replace it:
+The REST API is on `localhost:8080` and gRPC on `localhost:9090` (set `API_PORT` or `API_GRPC_PORT` in `.env` if a port is taken). The placeholder `JWT_SECRET` in `.env.example` is deliberately too short, so the API refuses to start until you replace it:
 
 ```json
 {"level":"ERROR","msg":"server stopped","error":"invalid configuration: JWT_SECRET must be at least 32 bytes, got 10"}
@@ -141,6 +143,7 @@ curl -s localhost:8080/users -H "Authorization: Bearer $TOKEN"
 | `JWT_ISSUER` | yes | | Written to the `iss` claim and required on every token |
 | `JWT_TTL` | no | `1h` | Token lifetime, a Go duration such as `15m` or `2h`; must be positive |
 | `PORT` | no | `8080` | HTTP port |
+| `GRPC_PORT` | no | `9090` | gRPC port |
 
 Configuration is validated before anything else runs, and every problem is reported in one error. For example, a short secret exits immediately without touching MongoDB:
 
@@ -199,6 +202,104 @@ The one exception is a request so malformed at the HTTP level (for example an in
 | `409` | Email already in use |
 | `413` | Request body over 1 MiB |
 | `500` | Unexpected failure; the client gets `"internal server error"` and the details go to the log only |
+
+## gRPC API
+
+A gRPC server runs next to the REST API (port `9090` by default, `GRPC_PORT`). It offers two calls from [`proto/user.proto`](proto/user.proto), served by the same services as REST:
+
+| Call | Like | Auth |
+| --- | --- | --- |
+| `user.v1.UserService/CreateUser` | `POST /auth/register` | public |
+| `user.v1.UserService/GetUser` | `GET /users/{id}` | `authorization: Bearer <token>` metadata, same tokens and rules as REST |
+
+Errors use gRPC status codes with the same messages as REST: `InvalidArgument` (validation, malformed ID), `Unauthenticated` (missing or invalid token), `NotFound`, `AlreadyExists` (email in use), and `Internal` with a generic message. Every call is logged once with its method, status code and duration, and shutdown is graceful like HTTP.
+
+### Examples with grpcurl
+
+[grpcurl](https://github.com/fullstorydev/grpcurl) works without the `.proto` file because server reflection is on. Recorded against the running server:
+
+```sh
+grpcurl -plaintext localhost:9090 list
+```
+
+```
+grpc.reflection.v1.ServerReflection
+grpc.reflection.v1alpha.ServerReflection
+user.v1.UserService
+```
+
+Create a user (no token needed):
+
+```sh
+grpcurl -plaintext -d '{"name":"Alice","email":"Alice@Example.com","password":"s3cret-pass"}' \
+  localhost:9090 user.v1.UserService/CreateUser
+```
+
+```json
+{
+  "user": {
+    "id": "6adf3a13446c8b8c376511d3",
+    "name": "Alice",
+    "email": "alice@example.com",
+    "createdAt": "2026-10-26T11:31:31.871Z"
+  }
+}
+```
+
+Get it, with a token from `POST /auth/login`:
+
+```sh
+grpcurl -plaintext -H "authorization: Bearer $TOKEN" -d '{"id":"6adf3a13446c8b8c376511d3"}' \
+  localhost:9090 user.v1.UserService/GetUser
+```
+
+```json
+{
+  "user": {
+    "id": "6adf3a13446c8b8c376511d3",
+    "name": "Alice",
+    "email": "alice@example.com",
+    "createdAt": "2026-10-26T11:31:31.871Z"
+  }
+}
+```
+
+Errors:
+
+```
+# GetUser without a token
+ERROR:
+  Code: Unauthenticated
+  Message: missing bearer token
+
+# CreateUser with an email that's taken
+ERROR:
+  Code: AlreadyExists
+  Message: email already exists
+
+# GetUser with {"id":"not-an-id"}, then with a well-formed ID that doesn't exist
+ERROR:
+  Code: InvalidArgument
+  Message: invalid user id
+ERROR:
+  Code: NotFound
+  Message: user not found
+```
+
+### Regenerating the code
+
+The generated files in `internal/adapter/grpc/userpb/` are committed, so building and testing never need `protoc`. After changing `proto/user.proto`, regenerate them from `user-management/` with `protoc` 36.2 (libprotoc), `protoc-gen-go` v1.36.12 and `protoc-gen-go-grpc` v1.6.2 on your `PATH`:
+
+```sh
+go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+protoc -I proto \
+  --go_out=. --go_opt=module=github.com/jingjoeh/test-assignment/user-management \
+  --go-grpc_out=. --go-grpc_opt=module=github.com/jingjoeh/test-assignment/user-management \
+  proto/user.proto
+```
+
+`protoc` itself comes from the [protobuf releases](https://github.com/protocolbuffers/protobuf/releases) (or `brew install protobuf`); it must be able to find `google/protobuf/timestamp.proto`, which ships with it.
 
 ## JWT guide
 
@@ -490,7 +591,8 @@ All tests use the standard `testing` package. MongoDB is replaced by hand-writte
 | `internal/adapter/http` | Every route and status code through `httptest`, the JWT middleware, request logging, JSON body limits, JSON 404/405, no password in any response, generic 500s | 97% |
 | `internal/adapter/auth` | JWT issue and validation (expired, tampered, wrong secret, wrong algorithm including `none`, wrong issuer, each claim missing); bcrypt, including the 72-byte limit | 97% |
 | `internal/worker` | The user-count loop, driven tick by tick through a channel: no sleeps, no real ticker | 100% |
-| `cmd/api` | Configuration loading, the HTTP server timeouts, and graceful shutdown over a real TCP listener (an in-flight request finishes; on a shutdown timeout the stuck connection is closed; server error) | partial: the MongoDB wiring in `run` is not unit-tested |
+| `cmd/api` | Configuration loading, the HTTP server timeouts, and graceful shutdown of HTTP and gRPC over real TCP listeners (an in-flight request or call finishes; on a shutdown timeout the stuck connection is closed; a failing server stops the other) | partial: the MongoDB wiring in `run` is not unit-tested |
+| `internal/adapter/grpc` | Both calls over an in-memory `bufconn` connection: public `CreateUser`, token rules on `GetUser` (same accepted and rejected forms as REST), every status code, generic `Internal` errors, one log entry per call, reflection | 100% |
 | `internal/adapter/mongo` | ID parsing, driver error mapping and document conversion only | ~11% |
 
 ### Testing boundary
@@ -504,6 +606,7 @@ The adapter and the running application were checked against `mongo:7` in Docker
 - **Adapter, during development and again after upgrading the driver to v2.9.2:** the unique email index is created and creating it again is harmless; a created user reads back unchanged; a duplicate email is rejected; a malformed ID and a well-formed missing ID give different errors; users list oldest first; count, partial update (other fields untouched), update to a taken email, delete, delete twice, and registering a deleted user's email again.
 - **End to end, against the running binary:** every endpoint with `curl`, including every status code in the samples above; deleting a user and registering the same email again (`201`); one request log line per request with no password or hash in the logs; the user count logged every 10 seconds, rising after registrations; and `SIGINT` during a slow upload: the upload still got its response, then the server, worker and MongoDB connection shut down in that order and the process exited with code 0.
 - **Docker Compose:** the image builds; the placeholder secret from `.env.example` is rejected at startup; with a real secret every sample request above gives the documented response (including both `409`s); MongoDB isn't reachable from the host; `docker compose stop api` shuts down gracefully in about a second with exit code 0; and users survive a full stop and start.
+- **gRPC, with grpcurl against the running binary and through Docker Compose:** reflection `list` and `describe`; `CreateUser` without a token; `AlreadyExists`, `InvalidArgument`, `Unauthenticated` and `NotFound`; `GetUser` with a token from `POST /auth/login`; a user created over gRPC read back through REST; one log entry per call; and on `SIGINT` both servers stop before the worker and MongoDB, exit code 0.
 
 ## Architecture
 
@@ -511,13 +614,16 @@ The code follows a hexagonal (ports and adapters) layout. Business logic doesn't
 
 ```
 user-management/
-├── cmd/api/              # main: configuration, wiring, HTTP server
+├── cmd/api/              # main: configuration, wiring, HTTP and gRPC servers
+├── proto/                # user.proto, the gRPC contract
 └── internal/
     ├── domain/           # User entity and domain errors; imports nothing from this module
     ├── port/             # interfaces: UserRepository, PasswordHasher, TokenIssuer, TokenValidator
     ├── service/          # AuthService (register, login) and UserService (get, list, update, delete)
     ├── adapter/
     │   ├── http/         # handlers, middleware (auth, logging), JSON helpers, router
+    │   ├── grpc/         # gRPC server: CreateUser, GetUser, auth and logging interceptors
+    │   │   └── userpb/   # code generated from proto/user.proto
     │   ├── mongo/        # UserRepository on MongoDB
     │   └── auth/         # bcrypt hasher, HS256 JWT issuer and validator
     ├── worker/           # background user-count goroutine
@@ -525,7 +631,7 @@ user-management/
 ```
 
 - `domain` has no dependencies; `service` depends only on `domain` and `port`.
-- Adapters implement ports (`adapter/mongo`, `adapter/auth`) or drive the services (`adapter/http`).
+- Adapters implement ports (`adapter/mongo`, `adapter/auth`) or drive the services (`adapter/http`, `adapter/grpc`). REST and gRPC are two front ends on the same services, so a rule is enforced once for both.
 - Only `adapter/mongo` imports the MongoDB driver, and only `adapter/mongo` knows that IDs are ObjectIDs.
 - `cmd/api` is the only place that knows about every piece.
 
@@ -565,4 +671,4 @@ The brief leaves several points open. These are the choices made, with the decis
 | Hexagonal architecture | Done: see [Architecture](#architecture) |
 | Graceful shutdown with `context.Context` | Done: `SIGINT`/`SIGTERM` via `signal.NotifyContext`; see [Quick start](#3-run) |
 | Docker and `docker-compose` | Done: see [Run with Docker Compose](#run-with-docker-compose) |
-| gRPC (`CreateUser`, `GetUser`) | Stretch goal, not started |
+| gRPC (`CreateUser`, `GetUser`) | Done, with optional token metadata on `GetUser`: see [gRPC API](#grpc-api) |

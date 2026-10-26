@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package user.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/jingjoeh/test-assignment/user-management/internal/adapter/grpc/userpb;userpb";
+
+// UserService is the gRPC counterpart of part of the REST API (C5).
+service UserService {
+  // CreateUser registers a new user, like POST /auth/register. It is public.
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+
+  // GetUser returns a user by ID, like GET /users/{id}. It requires the
+  // metadata "authorization: Bearer <token>", with a token from POST /auth/login.
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+}
+
+// User is a user as returned by the API. The password is never included.
+message User {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message CreateUserRequest {
+  string name = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}

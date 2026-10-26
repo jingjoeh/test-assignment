@@ -12,7 +12,7 @@
 These are the answers to the open points in `requirements.md` §5. They are **decided assumptions**, not implementation tasks: they have no checkboxes, and nothing in Part A is "done" until the matching tasks in Parts B and C are ticked. Each one also goes into the README's "Assumptions & Design Decisions" section (B9).
 
 > **Status:** All assumptions in Part A are decided. Labels:
-> - **✅ Decided (Dn)**: discussed and decided one by one (D1–D17, D19–D22).
+> - **✅ Decided (Dn)**: discussed and decided one by one (D1–D17, D19–D23).
 > - **✅ Accepted default (D18)**: proposed in the first draft and accepted as a group without individual discussion.
 >
 > **Recommended ADRs (not yet written):**
@@ -44,6 +44,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 | D20 | JSON field naming | camelCase JSON keys (`id`, `name`, `email`, `createdAt`). The domain entity has no JSON tags; the HTTP adapter maps it to a DTO | No (README samples) |
 | D21 | Password maximum | Passwords are at most 72 bytes (bcrypt's input limit); longer ones are a 400 validation error, not a 500 | No (README note) |
 | D22 | Go version | Minimum Go is 1.26 (`go 1.26.0`), the oldest release that still gets security fixes; dependencies on their latest versions; Docker builds with `golang:1.27`. Supersedes the D18 default of Go 1.23 | No (README note) |
+| D23 | gRPC (C5) | `google.golang.org/grpc` v1.84.0 and `google.golang.org/protobuf` v1.36.12. Generated code committed; tools (protoc, plugins, grpcurl) only in the session scratchpad. `CreateUser` public, `GetUser` needs a bearer token (mirrors REST). Server reflection on | No (README note) |
 
 ### A0. Architecture
 - Use hexagonal architecture (ports and adapters) from the first commit, not as a later refactor. ✅ Decided (D1)
@@ -376,16 +377,21 @@ Rules decided in D11:
 - [x] An in-flight request completes before exit. Checked 2026-10-26 with the real binary against `mongo:7`: SIGINT during a slow upload still got its response (5.1s request, logged after `shutdown started`); also `TestServeLetsInFlightRequestFinish`, plus tests for the shutdown timeout and a server error
 
 ### C5. gRPC support (stretch goal, D10)
-- [ ] `proto/user.proto` with the `CreateUser` and `GetUser` RPCs
-- [ ] Generate code with `protoc` (and record the command in the README or a Makefile)
-- [ ] gRPC adapter in `adapter/grpc/`: `CreateUser` calls `AuthService.Register` (D14), and `GetUser` calls `UserService.Get`. `GetUser` maps `ErrInvalidID` to `InvalidArgument` and `ErrNotFound` to `NotFound` (D15)
-- [ ] Optional: a unary interceptor that validates the JWT from the `authorization` metadata
-- [ ] Runs alongside HTTP on a separate port (`GRPC_PORT`) and shuts down gracefully
-- [ ] Tests that use `bufconn`
+Decided in D23 (2026-10-26):
+- Dependencies: `google.golang.org/grpc` v1.84.0, `google.golang.org/protobuf` v1.36.12 (latest stable; both fit the Go 1.26 minimum). Only `adapter/grpc` and `cmd/api` import them
+- Tooling: `protoc`, `protoc-gen-go`, `protoc-gen-go-grpc` and `grpcurl` live only in the session scratchpad; nothing is installed system-wide. The generated `.pb.go` files are committed, so building and testing never needs `protoc`; the README records the tool versions and the regenerate command
+- Auth mirrors REST: `CreateUser` is public like `POST /auth/register` (D2); `GetUser` needs `authorization: Bearer <token>` metadata like `GET /users/{id}`, checked by a unary interceptor that reuses `port.TokenValidator`
+- Server reflection is on, so `grpcurl` works without the `.proto` file
+- [x] `proto/user.proto` with the `CreateUser` and `GetUser` RPCs (package `user.v1`; `User` has no password field; `created_at` is a `google.protobuf.Timestamp`)
+- [x] Generate code with `protoc` (and record the command in the README or a Makefile): `protoc` 36.2, `protoc-gen-go` v1.36.12, `protoc-gen-go-grpc` v1.6.2; output in `internal/adapter/grpc/userpb/` (committed); command and versions in the README
+- [x] gRPC adapter in `adapter/grpc/`: `CreateUser` calls `AuthService.Register` (D14), and `GetUser` calls `UserService.Get`. `GetUser` maps `ErrInvalidID` to `InvalidArgument` and `ErrNotFound` to `NotFound` (D15). Also maps `ErrValidation` → `InvalidArgument`, `ErrEmailExists` → `AlreadyExists`, anything else → generic `Internal` (logged)
+- [x] Optional: a unary interceptor that validates the JWT from the `authorization` metadata: done (D23). `CreateUser` is public, `GetUser` needs `authorization: Bearer <token>`; same parsing rules as the HTTP middleware. Plus a logging interceptor: one entry per call with method, code and duration
+- [x] Runs alongside HTTP on a separate port (`GRPC_PORT`) and shuts down gracefully: `GRPC_PORT` (default 9090), also exposed in the Dockerfile and compose (`API_GRPC_PORT`). `serveAll` runs HTTP and gRPC together, shuts them down in parallel (so the total stays within the 20s Docker grace period) and stops both if either fails. On a gRPC shutdown timeout, `Stop` runs in the background: in grpc-go v1.84 a pending `GracefulStop` holds the server lock while waiting for a stuck handler, which made a synchronous `Stop` hang; `TestServeGRPCShutdownTimeout` caught this and now passes 200 runs in a row under `-race`
+- [x] Tests that use `bufconn`: `internal/adapter/grpc` at 100% (public `CreateUser`, token rules, every status code, generic `Internal`, logging, reflection); `cmd/api` has `serveGRPC` and `serveAll` tests over real TCP
 
 **Verify**
-- [ ] `grpcurl` can create and get a user
-- [ ] The README has grpcurl examples
+- [x] `grpcurl` can create and get a user. Checked 2026-10-26 against the real binary and through Docker Compose: reflection `list`/`describe`, `CreateUser` without a token, `GetUser` with a token from REST login, every error code, and a gRPC-created user read back over REST
+- [x] The README has grpcurl examples (new "gRPC API" section, recorded from the running server)
 
 ### C6. Hexagonal architecture
 - [x] Domain depends on nothing. Services depend only on domain and ports. Adapters depend on ports and services. `cmd` wires everything together Checked 2026-10-26: `domain` imports nothing internal; `port` → `domain`; `service` → `domain`, `port`; `adapter/http` → `domain`, `port`, `service`; `adapter/mongo` → `domain`, `port`; `adapter/auth` → `port`; `worker` → nothing internal

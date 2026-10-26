@@ -27,6 +27,9 @@ func TestLoadConfigValid(t *testing.T) {
 	if cfg.Port != defaultPort {
 		t.Errorf("Port = %q, want default %q", cfg.Port, defaultPort)
 	}
+	if cfg.GRPCPort != "9090" {
+		t.Errorf("GRPCPort = %q, want default %q", cfg.GRPCPort, "9090")
+	}
 	if cfg.JWTTTL != time.Hour {
 		t.Errorf("JWTTTL = %s, want default 1h", cfg.JWTTTL)
 	}
@@ -38,6 +41,7 @@ func TestLoadConfigValid(t *testing.T) {
 func TestLoadConfigOverrides(t *testing.T) {
 	env := validEnv()
 	env["PORT"] = "9090"
+	env["GRPC_PORT"] = "50051"
 	env["JWT_TTL"] = "15m"
 
 	cfg, err := LoadConfig(getenvFrom(env))
@@ -49,6 +53,9 @@ func TestLoadConfigOverrides(t *testing.T) {
 	}
 	if cfg.JWTTTL != 15*time.Minute {
 		t.Errorf("JWTTTL = %s, want 15m", cfg.JWTTTL)
+	}
+	if cfg.GRPCPort != "50051" {
+		t.Errorf("GRPCPort = %q, want %q", cfg.GRPCPort, "50051")
 	}
 }
 

@@ -42,7 +42,7 @@ func waitErr(t *testing.T, done <-chan error) error {
 	case err := <-done:
 		return err
 	case <-time.After(10 * time.Second): // failsafe only
-		t.Fatal("serve did not return")
+		t.Fatal("server did not return")
 		return nil
 	}
 }

@@ -8,6 +8,7 @@ import (
 
 const (
 	defaultPort       = "8080"
+	defaultGRPCPort   = "9090"
 	defaultJWTTTL     = time.Hour
 	minJWTSecretBytes = 32 // 256 bits, the HS256 key size
 )
@@ -15,6 +16,7 @@ const (
 // Config holds the settings read from environment variables.
 type Config struct {
 	Port      string
+	GRPCPort  string
 	MongoURI  string
 	MongoDB   string
 	JWTSecret []byte
@@ -28,6 +30,7 @@ type Config struct {
 func LoadConfig(getenv func(string) string) (Config, error) {
 	cfg := Config{
 		Port:      getenv("PORT"),
+		GRPCPort:  getenv("GRPC_PORT"),
 		MongoURI:  getenv("MONGO_URI"),
 		MongoDB:   getenv("MONGO_DB"),
 		JWTSecret: []byte(getenv("JWT_SECRET")),
@@ -36,6 +39,9 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	}
 	if cfg.Port == "" {
 		cfg.Port = defaultPort
+	}
+	if cfg.GRPCPort == "" {
+		cfg.GRPCPort = defaultGRPCPort
 	}
 
 	var errs []error

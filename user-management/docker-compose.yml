@@ -18,13 +18,15 @@ services:
       # Fixed inside the container; MONGO_DB, JWT_* come from .env.
       MONGO_URI: mongodb://mongo:27017
       PORT: "8080"
+      GRPC_PORT: "9090"
     ports:
       - "${API_PORT:-8080}:8080"
+      - "${API_GRPC_PORT:-9090}:9090"
     depends_on:
       mongo:
         condition: service_healthy
     # docker stop sends SIGTERM and kills after 10s by default; the API's own
-    # shutdown timeout is 15s (C4), so allow longer than that.
+    # shutdown timeout is 15s (C4, HTTP and gRPC in parallel), so allow longer.
     stop_grace_period: 20s
 
 volumes:

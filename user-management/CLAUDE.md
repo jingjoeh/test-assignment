@@ -2,7 +2,7 @@
 
 ## Source of truth (in priority order)
 1. `../TEST-ASSIGNMENT.md`, section "User Management API": the original brief. If anything conflicts with it, the brief wins.
-2. `docs/IMPLEMENTATION_PLAN.md`: the plan. Decisions in Part A (D1–D22) are binding.
+2. `docs/IMPLEMENTATION_PLAN.md`: the plan. Decisions in Part A (D1–D23) are binding.
 3. `docs/requirements.md`: summary of the brief.
 
 Read the plan before starting any implementation work.
@@ -31,6 +31,7 @@ GOTOOLCHAIN=go1.26.0 go test -race ./...
 - HTTP: stdlib `net/http` only (D4). No router or web framework.
 - Tests: stdlib `testing` with hand-written fakes (D5). No mocking libraries, no `time.Sleep` in tests (D16).
 - Users are created only by `AuthService.Register` (D14). There is no `POST /users` and no `UserService.Create`.
-- Import our adapters with the aliases `httpadapter` and `mongoadapter` wherever `net/http` or the Mongo driver is also imported (D19).
+- Import our adapters with the aliases `httpadapter`, `mongoadapter` and `grpcadapter` wherever `net/http`, the Mongo driver or `google.golang.org/grpc` is also imported (D19).
+- `internal/adapter/grpc/userpb` is generated from `proto/user.proto`: never edit it by hand; regenerate it with the command in the README.
 - Don't add a dependency that isn't listed in Part A of the plan without asking first.
 - Minimum Go is 1.26 (D22): `go.mod` says `go 1.26.0`. Keep dependencies on their latest versions, but check a module's own `go` directive first and don't let an upgrade raise the minimum without asking.
