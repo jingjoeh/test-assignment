@@ -54,7 +54,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - Go 1.23+, using Go modules (D4 needs at least 1.22 for `ServeMux` patterns). ✅ Accepted default (D18)
 - HTTP router: the standard library `net/http` (`ServeMux` with method and path patterns), so there is no framework dependency. Middleware is `func(http.Handler) http.Handler`, and small JSON helpers are written in `adapter/http`. ✅ Decided (D4)
 - MongoDB 7.x server. ✅ Accepted default (D18)
-- Official driver v2: `go.mongodb.org/mongo-driver/v2`. Only `adapter/mongo` imports it (D1). ✅ Decided (D13)
+- Official driver v2: `go.mongodb.org/mongo-driver/v2`, pinned to v2.8.x because v2.9+ requires Go 1.25 and would break the Go 1.23 floor. Only `adapter/mongo` imports it (D1). ✅ Decided (D13)
 - JWT: `github.com/golang-jwt/jwt/v5`. ✅ Accepted default (D18)
 - Password hashing: `golang.org/x/crypto/bcrypt`. ✅ Accepted default (D18)
 - Logging: the standard library `log/slog`, with JSON output to stdout. ✅ Accepted default (D18)
@@ -169,18 +169,20 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [x] The JSON response DTO has no password field (checked by `TestUserResponseJSON`: exact key set, no `password` and no hash in the output, `createdAt` in UTC)
 
 ### B2. MongoDB integration (req. 4)
-- [ ] `port.UserRepository` interface with `Create`, `GetByID`, `GetByEmail`, `List`, `Update`, `Delete`, `Count`
-- [ ] Mongo adapter that implements the interface with the official driver
-- [ ] Create a unique index on `email` at startup
-- [ ] Map duplicate-key errors to `ErrEmailExists` and `ErrNoDocuments` to `ErrNotFound`
-- [ ] Map an invalid ObjectID hex string to `ErrInvalidID` (→ 400), and a valid ID with no document to `ErrNotFound` (→ 404) (D15). Parsing stays in `adapter/mongo`, so the domain keeps IDs as plain strings
-- [ ] Use a context with a timeout on every DB call
-- [ ] Connect at startup with a ping check, and disconnect on shutdown
+- [x] `port.UserRepository` interface with `Create`, `GetByID`, `GetByEmail`, `List`, `Update`, `Delete`, `Count`. `Update` takes `port.UserUpdate{Name, Email *string}` (D7)
+- [x] Mongo adapter that implements the interface with the official driver (v2.8.2). `Update` uses `FindOneAndUpdate` so the change and the returned user are atomic
+- [x] Create a unique index on `email` at startup (`EnsureIndexes`, idempotent; called from `main` in B8)
+- [x] Map duplicate-key errors to `ErrEmailExists` and `ErrNoDocuments` to `ErrNotFound`
+- [x] Map an invalid ObjectID hex string to `ErrInvalidID` (→ 400), and a valid ID with no document to `ErrNotFound` (→ 404) (D15). Parsing stays in `adapter/mongo`, so the domain keeps IDs as plain strings
+- [x] Use a context with a timeout on every DB call
+- [x] Connect at startup with a ping check (`Connect`)
+- [ ] Disconnect on shutdown (wired in `main`, B8)
 
 **Verify**
-- [ ] When run against a local MongoDB, a created user can be read back
-- [ ] Inserting a duplicate email returns `ErrEmailExists`
-- [ ] `GetByID("not-an-id")` returns `ErrInvalidID`, and `GetByID` with a valid but unused ObjectID returns `ErrNotFound`
+- [x] When run against a local MongoDB, a created user can be read back
+- [x] Inserting a duplicate email returns `ErrEmailExists`
+- [x] `GetByID("not-an-id")` returns `ErrInvalidID`, and `GetByID` with a valid but unused ObjectID returns `ErrNotFound`
+- Verified 2026-10-26 against `mongo:7` in Docker with a temporary build-tagged test (deleted afterwards, D5)
 
 ### B3. Authentication and JWT (req. 2)
 - [ ] Password hasher (bcrypt) behind an interface
