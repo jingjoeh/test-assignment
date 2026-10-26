@@ -1,0 +1,31 @@
+services:
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+    # Not published to the host: only the api service reaches it.
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      # Fixed inside the container; MONGO_DB, JWT_* come from .env.
+      MONGO_URI: mongodb://mongo:27017
+      PORT: "8080"
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    # docker stop sends SIGTERM and kills after 10s by default; the API's own
+    # shutdown timeout is 15s (C4), so allow longer than that.
+    stop_grace_period: 20s
+
+volumes:
+  mongo-data:

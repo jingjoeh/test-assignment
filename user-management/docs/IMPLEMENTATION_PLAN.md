@@ -338,13 +338,13 @@ Scope (D10):
 Order: C3 → C4 → C1, then C5 if there is time. C2 and C6 are checked as Part B is built.
 
 ### C1. Containerization
-- [ ] Multi-stage `Dockerfile` (build stage, then a small runtime image)
-- [ ] `docker-compose.yml` with `api` and `mongo` services, an env file, a Mongo volume, and a health check
-- [ ] `stop_grace_period: 20s` on the `api` service: `docker stop` sends SIGTERM and kills after 10s by default, which is shorter than the 15s shutdown timeout (C4)
-- [ ] `.env.example`
+- [x] Multi-stage `Dockerfile` (build stage, then a small runtime image) (`golang:1.27` build, `gcr.io/distroless/static-debian12:nonroot` runtime, about 20 MB; exec-form entrypoint so the binary receives SIGTERM; `.dockerignore` keeps `.env` out of the build context)
+- [x] `docker-compose.yml` with `api` and `mongo` services, an env file, a Mongo volume, and a health check (health check on `mongo`, `api` waits for it with `condition: service_healthy`; MongoDB is not published to the host; `API_PORT` picks the host port)
+- [x] `stop_grace_period: 20s` on the `api` service: `docker stop` sends SIGTERM and kills after 10s by default, which is shorter than the 15s shutdown timeout (C4). Checked: `docker compose stop api` shut down gracefully in about 1s with exit code 0 and the full shutdown log sequence
+- [x] `.env.example` (the `JWT_SECRET` placeholder is deliberately shorter than 32 bytes, so the API refuses to start until it is replaced: checked, exit code 1 with a clear message)
 
 **Verify**
-- [ ] `docker compose up` brings up the API and Mongo, and the sample requests work against it
+- [x] `docker compose up` brings up the API and Mongo, and the sample requests work against it. Checked 2026-10-26: every README sample gave the documented response, including both 409s; users survived a full stop and start (volume). While testing I dropped the database with the API running, which also removes the unique index until the next start (the API creates it at startup); the README now says to restart the API after dropping the collection
 
 ### C2. Abstraction (interfaces)
 - [x] Repository, hasher and token issuer are all accessed through interfaces in `port/` (mostly covered by B2 and B3) Checked 2026-10-26: `port` defines `UserRepository`, `PasswordHasher`, `TokenIssuer` and `TokenValidator`; `AuthService` and `UserService` hold only those interfaces

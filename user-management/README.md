@@ -44,7 +44,33 @@ How each item in the brief maps to this implementation.
 
 ## Quick start
 
+There are two ways to run it: [with Docker Compose](#run-with-docker-compose) (API and MongoDB together, nothing else to install) or [locally with Go](#prerequisites).
+
+### Run with Docker Compose
+
+From `user-management/`:
+
+```sh
+cp .env.example .env
+# edit .env and set JWT_SECRET to the output of: openssl rand -base64 32
+docker compose up --build
+```
+
+The API is on `localhost:8080` (set `API_PORT` in `.env` if that port is taken). The placeholder `JWT_SECRET` in `.env.example` is deliberately too short, so the API refuses to start until you replace it:
+
+```json
+{"level":"ERROR","msg":"server stopped","error":"invalid configuration: JWT_SECRET must be at least 32 bytes, got 10"}
+```
+
+- The image is built in two stages: compiled with `golang:1.27`, then copied into a distroless image (about 20 MB) that has no shell and runs as a non-root user.
+- MongoDB 7 runs alongside it with a health check; the API starts once MongoDB is healthy. MongoDB is not published to the host, and its data is kept in the `mongo-data` volume.
+- `docker compose stop` (or `Ctrl+C`) shuts the API down gracefully; `stop_grace_period` is 20s so Docker doesn't kill it before its own 15s shutdown timeout.
+- `docker compose down -v` removes the containers and the data volume.
+
 ### Prerequisites
+
+To run locally instead:
+
 
 - Go 1.26 or newer. With an older Go (1.21+), the `go` command downloads 1.26 automatically.
 - Docker, to run MongoDB 7 locally (or any MongoDB 7 you can reach).
@@ -123,6 +149,8 @@ Configuration is validated before anything else runs, and every problem is repor
 ```
 
 The HTTP server has fixed timeouts: 5s to read headers, 10s to read a request, 10s to write a response, and 60s for idle connections.
+
+The unique index on `email` is created at startup. If the `users` collection or the database is dropped while the API is running, restart the API so the index is created again; until then duplicate emails are not rejected.
 
 ## API reference
 
@@ -475,6 +503,7 @@ The adapter and the running application were checked against `mongo:7` in Docker
 
 - **Adapter, during development and again after upgrading the driver to v2.9.2:** the unique email index is created and creating it again is harmless; a created user reads back unchanged; a duplicate email is rejected; a malformed ID and a well-formed missing ID give different errors; users list oldest first; count, partial update (other fields untouched), update to a taken email, delete, delete twice, and registering a deleted user's email again.
 - **End to end, against the running binary:** every endpoint with `curl`, including every status code in the samples above; deleting a user and registering the same email again (`201`); one request log line per request with no password or hash in the logs; the user count logged every 10 seconds, rising after registrations; and `SIGINT` during a slow upload: the upload still got its response, then the server, worker and MongoDB connection shut down in that order and the process exited with code 0.
+- **Docker Compose:** the image builds; the placeholder secret from `.env.example` is rejected at startup; with a real secret every sample request above gives the documented response (including both `409`s); MongoDB isn't reachable from the host; `docker compose stop api` shuts down gracefully in about a second with exit code 0; and users survive a full stop and start.
 
 ## Architecture
 
@@ -535,5 +564,5 @@ The brief leaves several points open. These are the choices made, with the decis
 | Input validation | Done: see [Request rules](#request-rules) |
 | Hexagonal architecture | Done: see [Architecture](#architecture) |
 | Graceful shutdown with `context.Context` | Done: `SIGINT`/`SIGTERM` via `signal.NotifyContext`; see [Quick start](#3-run) |
-| Docker and `docker-compose` | Planned |
+| Docker and `docker-compose` | Done: see [Run with Docker Compose](#run-with-docker-compose) |
 | gRPC (`CreateUser`, `GetUser`) | Stretch goal, not started |
