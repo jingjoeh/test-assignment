@@ -406,6 +406,8 @@ Decided in D23 (2026-10-26):
 
 Run 2026-10-26 on a fresh clone of `c2a70fd`.
 
+Re-run 2026-10-26 after C5, on a fresh clone of `8241dc6` from GitHub: all items pass again. 197 tests pass on Go 1.27.3 and 1.26.0 (`adapter/grpc` 100%, `cmd/api` 53.5%); 19 commits scanned, the 77 base64 strings are all `go.sum` checksums; both README paths and the README's grpcurl examples work, with a clean shutdown of both servers; 50 README claims match the code, 16 of them about gRPC.
+
 - [x] All of Part B is ticked (0 open items)
 - [x] `gofmt -l .` produces no output, and `go vet ./...` is clean
 - [x] `go test -race -cover ./...` passes (`service` 100%, `worker` 100%, `adapter/http` 97.1%, `adapter/auth` 96.6%, `cmd/api` 41.1%, `adapter/mongo` 11.4% by design, D5)
@@ -415,4 +417,4 @@ Run 2026-10-26 on a fresh clone of `c2a70fd`.
 - [x] Assumptions in the README match what was implemented: 34 stated values and rules (limits, timeouts, defaults, JWT rules, Docker settings, versions, the 6 routes) checked against the source; all match
 
 ### Optional enhancement (only after the final checklist passes)
-- [ ] Reconsider MongoDB integration tests (D5) if time remains: for example a separate opt-in run against Docker, so the adapter checks done manually in B2 and B8 become repeatable. This needs a new decision first; it must not delay B9, C4 or C1
+- Reconsidered 2026-10-26 and **not doing it** (D5 stands). The brief requires unit tests with MongoDB mocked and has no CI or integration-test requirement ("4. MongoDB Integration" means using the driver, which is done). The options weighed were env-gated integration tests, testcontainers-go, a mocked driver, an extra interface around the driver, an embedded MongoDB, and a GitHub Actions workflow. The README already explains the adapter's low coverage and records the manual verification against `mongo:7`, and lists repeatable integration tests as possible future work
