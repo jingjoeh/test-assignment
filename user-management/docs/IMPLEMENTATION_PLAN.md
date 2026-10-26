@@ -183,7 +183,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [x] Map an invalid ObjectID hex string to `ErrInvalidID` (→ 400), and a valid ID with no document to `ErrNotFound` (→ 404) (D15). Parsing stays in `adapter/mongo`, so the domain keeps IDs as plain strings
 - [x] Use a context with a timeout on every DB call
 - [x] Connect at startup with a ping check (`Connect`)
-- [ ] Disconnect on shutdown. Deferred in `run` since B8, but `run` only returns cleanly once C4 handles signals, so it is checked in C4
+- [x] Disconnect on shutdown. Deferred in `run` since B8, but `run` only returns cleanly once C4 handles signals, so it is checked in C4. Checked in C4: `mongo disconnected` is logged after `worker stopped` on SIGINT
 
 **Verify**
 - [x] When run against a local MongoDB, a created user can be read back
@@ -340,16 +340,17 @@ Order: C3 → C4 → C1, then C5 if there is time. C2 and C6 are checked as Part
 ### C1. Containerization
 - [ ] Multi-stage `Dockerfile` (build stage, then a small runtime image)
 - [ ] `docker-compose.yml` with `api` and `mongo` services, an env file, a Mongo volume, and a health check
+- [ ] `stop_grace_period: 20s` on the `api` service: `docker stop` sends SIGTERM and kills after 10s by default, which is shorter than the 15s shutdown timeout (C4)
 - [ ] `.env.example`
 
 **Verify**
 - [ ] `docker compose up` brings up the API and Mongo, and the sample requests work against it
 
 ### C2. Abstraction (interfaces)
-- [ ] Repository, hasher and token issuer are all accessed through interfaces in `port/` (mostly covered by B2 and B3)
+- [x] Repository, hasher and token issuer are all accessed through interfaces in `port/` (mostly covered by B2 and B3) Checked 2026-10-26: `port` defines `UserRepository`, `PasswordHasher`, `TokenIssuer` and `TokenValidator`; `AuthService` and `UserService` hold only those interfaces
 
 **Verify**
-- [ ] Services and handlers do not import the Mongo driver package
+- [x] Services and handlers do not import the Mongo driver package Checked 2026-10-26: of all non-test packages, only `internal/adapter/mongo` imports `go.mongodb.org/mongo-driver/v2`
 
 ### C3. Validation
 Rules decided in D11:
@@ -358,21 +359,21 @@ Rules decided in D11:
 - [x] `email` at most 254 bytes (not characters), checked on the normalized (trimmed, lowercased) value (D11). Register uses it now; PATCH must use the same `validateEmail` (B4)
 - [x] `password` required, at least 8 characters and at most 72 bytes (D21), on register. No composition rules (uppercase, digit, symbol)
 - [x] Login: `email` and `password` required (format and length are not checked, so a login never reveals the rules)
-- [ ] PATCH needs at least one field, and each field present is validated
+- [x] PATCH needs at least one field, and each field present is validated Checked 2026-10-26: `TestUserUpdateErrors`, `TestUpdateUserErrors` (`{}`, null fields, blank name, invalid email, email over 254 bytes)
 - [x] Unknown fields, malformed JSON, trailing JSON and oversized bodies are handled by the shared decode helper in B4 (D11, D17)
-- [ ] Return 400 with a clear message
+- [x] Return 400 with a clear message Checked 2026-10-26: handler tests assert the exact message for every 400, e.g. `name is required`, `unknown field "password"`
 
 **Verify**
-- [ ] Table-driven tests cover each rule
-- [ ] PATCH with `{"password": "..."}` returns 400, and so does a typo such as `{"emial": "..."}`
+- [x] Table-driven tests cover each rule Checked 2026-10-26: `TestRegisterValidation`, `TestRegisterAcceptsBoundaryValues`, `TestValidateEmailLength`, `TestLoginValidation`, `TestUserUpdateErrors`, `TestRegisterErrors`, `TestUpdateUserErrors`: every rule has a rejected case and its accepted boundary
+- [x] PATCH with `{"password": "..."}` returns 400, and so does a typo such as `{"emial": "..."}` Checked 2026-10-26: `TestUpdateUserErrors/password_field` and `/typo_field`; also confirmed with curl in B8
 
 ### C4. Graceful shutdown
-- [ ] `signal.NotifyContext` for `SIGINT` and `SIGTERM`
-- [ ] On signal: `server.Shutdown` with a timeout, stop the worker, then disconnect Mongo
+- [x] `signal.NotifyContext` for `SIGINT` and `SIGTERM` (in `main`; after the first signal the default is restored, so a second Ctrl+C kills the process)
+- [x] On signal: `server.Shutdown` with a timeout, stop the worker, then disconnect Mongo. If the timeout expires, `srv.Close()` force-closes the remaining connections first (logged as a warning), then the worker and Mongo are still shut down and the process exits with code 1; `TestServeShutdownTimeout` checks the stuck connection is closed and fails without the fix (`serve` shuts the server down with a 15s timeout; `run` then stops the worker and waits for it, and the deferred disconnect runs last. The worker has its own context so it keeps running while requests drain)
 
 **Verify**
-- [ ] Ctrl+C logs a clean shutdown sequence and exits with code 0
-- [ ] An in-flight request completes before exit
+- [x] Ctrl+C logs a clean shutdown sequence and exits with code 0. Checked 2026-10-26 with the real binary against `mongo:7`: SIGINT during a slow upload logged `shutdown started` → `http server stopped` → `worker stopped` → `mongo disconnected` → `shutdown complete`, exit code 0
+- [x] An in-flight request completes before exit. Checked 2026-10-26 with the real binary against `mongo:7`: SIGINT during a slow upload still got its response (5.1s request, logged after `shutdown started`); also `TestServeLetsInFlightRequestFinish`, plus tests for the shutdown timeout and a server error
 
 ### C5. gRPC support (stretch goal, D10)
 - [ ] `proto/user.proto` with the `CreateUser` and `GetUser` RPCs
@@ -387,11 +388,11 @@ Rules decided in D11:
 - [ ] The README has grpcurl examples
 
 ### C6. Hexagonal architecture
-- [ ] Domain depends on nothing. Services depend only on domain and ports. Adapters depend on ports and services. `cmd` wires everything together
+- [x] Domain depends on nothing. Services depend only on domain and ports. Adapters depend on ports and services. `cmd` wires everything together Checked 2026-10-26: `domain` imports nothing internal; `port` → `domain`; `service` → `domain`, `port`; `adapter/http` → `domain`, `port`, `service`; `adapter/mongo` → `domain`, `port`; `adapter/auth` → `port`; `worker` → nothing internal
 - [x] The README has a short architecture section explaining the layers
 
 **Verify**
-- [ ] `go list -deps` on `domain` and `service` shows no HTTP, Mongo or gRPC packages
+- [x] `go list -deps` on `domain` and `service` shows no HTTP, Mongo or gRPC packages Checked 2026-10-26: no `net/http`, Mongo driver, gRPC, JWT or bcrypt packages in their transitive dependencies
 
 ---
 

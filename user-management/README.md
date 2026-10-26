@@ -81,7 +81,17 @@ The server listens on `:8080` (set `PORT` to change it). Logs are JSON on stdout
 {"time":"2026-10-26T16:40:51.713695+07:00","level":"INFO","msg":"http request","method":"POST","path":"/auth/register","status":201,"duration_ms":49.083}
 ```
 
-Stop it with `Ctrl+C`.
+Stop it with `Ctrl+C` (or `SIGTERM`, which is what `docker stop` sends). Shutdown is graceful: the server stops accepting connections, lets requests already in progress finish (up to 15 seconds), then stops the user-count worker and disconnects from MongoDB:
+
+```json
+{"level":"INFO","msg":"shutdown started","timeout":"15s"}
+{"level":"INFO","msg":"http server stopped"}
+{"level":"INFO","msg":"worker stopped"}
+{"level":"INFO","msg":"mongo disconnected"}
+{"level":"INFO","msg":"shutdown complete"}
+```
+
+If requests are still running after 15 seconds, their connections are closed, a `shutdown timed out, closing connections` warning is logged, the worker and MongoDB are still shut down, and the process exits with code 1. A second `Ctrl+C` during shutdown stops the process immediately.
 
 ### 4. Try it
 
@@ -452,7 +462,7 @@ All tests use the standard `testing` package. MongoDB is replaced by hand-writte
 | `internal/adapter/http` | Every route and status code through `httptest`, the JWT middleware, request logging, JSON body limits, JSON 404/405, no password in any response, generic 500s | 97% |
 | `internal/adapter/auth` | JWT issue and validation (expired, tampered, wrong secret, wrong algorithm including `none`, wrong issuer, each claim missing); bcrypt, including the 72-byte limit | 97% |
 | `internal/worker` | The user-count loop, driven tick by tick through a channel: no sleeps, no real ticker | 100% |
-| `cmd/api` | Configuration loading and the HTTP server timeouts | partial |
+| `cmd/api` | Configuration loading, the HTTP server timeouts, and graceful shutdown over a real TCP listener (an in-flight request finishes; on a shutdown timeout the stuck connection is closed; server error) | partial: the MongoDB wiring in `run` is not unit-tested |
 | `internal/adapter/mongo` | ID parsing, driver error mapping and document conversion only | ~11% |
 
 ### Testing boundary
@@ -464,7 +474,7 @@ All tests use the standard `testing` package. MongoDB is replaced by hand-writte
 The adapter and the running application were checked against `mongo:7` in Docker on 2026-10-26:
 
 - **Adapter, during development and again after upgrading the driver to v2.9.2:** the unique email index is created and creating it again is harmless; a created user reads back unchanged; a duplicate email is rejected; a malformed ID and a well-formed missing ID give different errors; users list oldest first; count, partial update (other fields untouched), update to a taken email, delete, delete twice, and registering a deleted user's email again.
-- **End to end, against the running binary:** every endpoint with `curl`, including every status code in the samples above; deleting a user and registering the same email again (`201`); one request log line per request with no password or hash in the logs; and the user count logged every 10 seconds, rising after registrations.
+- **End to end, against the running binary:** every endpoint with `curl`, including every status code in the samples above; deleting a user and registering the same email again (`201`); one request log line per request with no password or hash in the logs; the user count logged every 10 seconds, rising after registrations; and `SIGINT` during a slow upload: the upload still got its response, then the server, worker and MongoDB connection shut down in that order and the process exited with code 0.
 
 ## Architecture
 
@@ -516,7 +526,6 @@ The brief leaves several points open. These are the choices made, with the decis
 - **Tokens can't be revoked (D6).** Tokens are stateless and there is no refresh token or deny list. In particular, **a token belonging to a deleted user stays valid until it expires** (at most `JWT_TTL`, 1 hour by default), and can still call the `/users` endpoints in that time.
 - **No pagination (D8).** `GET /users` returns every user in one response.
 - **No automated MongoDB integration tests (D5).** The adapter was verified manually (see [Manual MongoDB verification](#manual-mongodb-verification)); repeatable integration tests would be the next step.
-- **No graceful shutdown yet.** `Ctrl+C` stops the process immediately. Signal handling is planned (see [Bonus features](#bonus-features)).
 
 ## Bonus features
 
@@ -525,6 +534,6 @@ The brief leaves several points open. These are the choices made, with the decis
 | Abstraction with Go interfaces | Done: every external dependency is behind a port in `internal/port` |
 | Input validation | Done: see [Request rules](#request-rules) |
 | Hexagonal architecture | Done: see [Architecture](#architecture) |
-| Graceful shutdown with `context.Context` | Planned |
+| Graceful shutdown with `context.Context` | Done: `SIGINT`/`SIGTERM` via `signal.NotifyContext`; see [Quick start](#3-run) |
 | Docker and `docker-compose` | Planned |
 | gRPC (`CreateUser`, `GetUser`) | Stretch goal, not started |
