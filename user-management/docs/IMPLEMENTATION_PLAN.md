@@ -198,14 +198,14 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 
 **Verify**
 - [x] Login with valid credentials returns a token that decodes with `alg: HS256`
-- [ ] Without a token, a protected route returns 401. Can only be checked once B4 adds the protected `/users` routes; until then `RequireAuth` is covered by its unit test (B7)
+- [x] Without a token, a protected route returns 401 (checked in B4 by `TestUsersRoutesRequireToken` on every `/users` route)
 - [x] An expired, tampered, wrong-alg or wrong-issuer token returns 401
 - [x] A correctly signed token missing `sub`, `iss`, `iat` or `exp`, or with an empty `sub`, returns 401 (D17)
 - [x] A wrong password and an unknown email return the same 401 response
 
 ### B4. User operations (req. 3)
-- [ ] `UserService`: `Get`, `List`, `Update` (name and/or email), `Delete`. No `Create`: creation belongs to `AuthService.Register` (D14)
-- [ ] Handlers and routes for `/users` as in A4, all wrapped in the JWT middleware
+- [x] `UserService`: `Get`, `List`, `Update` (name and/or email), `Delete`. No `Create`: creation belongs to `AuthService.Register` (D14)
+- [x] Handlers and routes for `/users` as in A4, all wrapped in the JWT middleware
 - [x] Map domain errors to HTTP status codes in one place (`ErrInvalidID` → 400, `ErrNotFound` → 404, D15)
 - [x] One shared JSON decode helper used by every handler that reads a body:
   - [x] Wraps the body in `http.MaxBytesReader` (1 MiB); exceeding it returns 413 (D17)
@@ -213,20 +213,20 @@ These are the answers to the open points in `requirements.md` §5. They are **de
   - [x] After decoding one value, checks that the rest of the body is empty (a second `Decode` must return `io.EOF`); otherwise 400 (D17)
   - [x] Malformed or empty JSON returns 400
 - [x] One shared JSON response helper that sets `Content-Type: application/json` before writing the status, used for every JSON success and error response
-- [ ] `DELETE` success writes `204` with no body and doesn't go through the JSON response helper
-- [ ] Unknown routes return a JSON 404 (`{"error": ...}`, `Content-Type: application/json`) instead of the `ServeMux` plain-text body
-- [ ] An unsupported method on a known route returns a JSON 405 and keeps the correct `Allow` header (e.g. `GET /auth/login` → 405, `Allow: POST`)
-- [ ] `PATCH` validates `email` with the same `validateEmail` as register, including the 254-byte limit (D11)
+- [x] `DELETE` success writes `204` with no body and doesn't go through the JSON response helper
+- [x] Unknown routes return a JSON 404 (`{"error": ...}`, `Content-Type: application/json`) instead of the `ServeMux` plain-text body. `jsonMuxErrors` wraps the mux; responses it doesn't recognize (such as path-cleaning redirects) pass through unchanged
+- [x] An unsupported method on a known route returns a JSON 405 and keeps the correct `Allow` header (e.g. `GET /auth/login` → 405, `Allow: POST`)
+- [x] `PATCH` validates `email` with the same `validateEmail` as register, including the 254-byte limit (D11)
 
 **Verify**
-- [ ] Each of the five operations works end-to-end with curl (create = `POST /auth/register`)
-- [ ] Updating to an email that already exists returns 409
-- [ ] PATCH with only `name`, only `email`, or both updates just those fields; PATCH with `{}` returns 400 (D7)
-- [ ] Get, update or delete on a well-formed but missing ID returns 404, and on a malformed ID returns 400 (D15)
-- [ ] A body over 1 MiB returns 413, and a body with trailing JSON returns 400 (D17)
-- [ ] Tests: an unknown route returns a JSON 404; `GET /auth/login`, `PUT /users/{id}` and `POST /users/{id}` return a JSON 405 with the right `Allow` header
-- [ ] No response contains a password or hash
-- [ ] End-to-end against the running application and MongoDB: register a user, delete it, then register again with the same email; the second registration returns 201 (D9: hard delete frees the unique email)
+- [ ] Each of the five operations works end-to-end with curl (create = `POST /auth/register`). Needs `main` wiring, so it is checked in B8
+- [x] Updating to an email that already exists returns 409
+- [x] PATCH with only `name`, only `email`, or both updates just those fields; PATCH with `{}` returns 400 (D7)
+- [x] Get, update or delete on a well-formed but missing ID returns 404, and on a malformed ID returns 400 (D15)
+- [x] A body over 1 MiB returns 413, and a body with trailing JSON returns 400 (D17)
+- [x] Tests: an unknown route returns a JSON 404; `GET /auth/login`, `PUT /users/{id}` and `POST /users/{id}` return a JSON 405 with the right `Allow` header
+- [x] No response contains a password or hash
+- [ ] End-to-end against the running application and MongoDB: register a user, delete it, then register again with the same email; the second registration returns 201 (D9: hard delete frees the unique email). Needs `main` wiring, so it is checked in B8
 
 ### B5. Logging middleware (req. 5)
 - [ ] Middleware that records start time, wraps `ResponseWriter` to capture the status, and logs method, path, status and duration
@@ -255,31 +255,31 @@ These are the answers to the open points in `requirements.md` §5. They are **de
   - [x] Register: a hasher error or repository error is returned and nothing is half-created
   - [x] Login: success returns a token whose `sub` is the user ID; email lookup is case-insensitive
   - [x] Login: wrong password and unknown email both return `ErrInvalidCredentials`; a repository error is not turned into `ErrInvalidCredentials`
-- [ ] `UserService` tests:
-  - [ ] Get: success, `ErrNotFound`, `ErrInvalidID`
-  - [ ] List: empty repository returns an empty (non-nil) slice; several users are all returned
-  - [ ] Update: name only, email only, both, no fields → `ErrValidation`, duplicate email → `ErrEmailExists`, updating to the user's own current email succeeds, email normalized, `ErrNotFound`, `ErrInvalidID`
-  - [ ] Update leaves `CreatedAt` and `PasswordHash` unchanged
-  - [ ] Delete removes the user document: a later Get of the same ID returns `ErrNotFound` (D9)
-  - [ ] Delete: success, `ErrNotFound`, `ErrInvalidID`
-  - [ ] Every method passes repository errors through
+- [x] `UserService` tests:
+  - [x] Get: success, `ErrNotFound`, `ErrInvalidID`
+  - [x] List: empty repository returns an empty (non-nil) slice; several users are all returned
+  - [x] Update: name only, email only, both, no fields → `ErrValidation`, duplicate email → `ErrEmailExists`, updating to the user's own current email succeeds, email normalized, `ErrNotFound`, `ErrInvalidID`
+  - [x] Update leaves `CreatedAt` and `PasswordHash` unchanged
+  - [x] Delete removes the user document: a later Get of the same ID returns `ErrNotFound` (D9)
+  - [x] Delete: success, `ErrNotFound`, `ErrInvalidID`
+  - [x] Every method passes repository errors through
 - [x] Bcrypt tests with the real hasher: a 72-byte password plus any suffix doesn't match (regression), plus an HTTP login test wired with the real hasher
 - [x] Token tests: issue then validate, expired token, tampered token, wrong alg (including `none`), wrong issuer, wrong secret, and each required claim missing (D17)
 - [ ] Middleware tests:
   - [x] JWT: missing header, wrong scheme, missing token, extra fields, invalid/expired/wrong-issuer token → 401; `bearer`/`BEARER`/mixed-case scheme and extra or surrounding whitespace are accepted; a valid token puts the user ID in the request context
   - [ ] Logging: method, path, status and duration are logged, including when the handler never calls `WriteHeader` (status 200)
-- [ ] Handler tests with `httptest`, for every route:
-  - [ ] Success status and JSON body; no `password` or hash field in any response
-  - [ ] Every response that has a JSON body, success or error, sets `Content-Type: application/json`
-  - [ ] `DELETE` success returns 204 with an empty body (no JSON, so no JSON `Content-Type` is required)
+- [x] Handler tests with `httptest`, for every route:
+  - [x] Success status and JSON body; no `password` or hash field in any response
+  - [x] Every response that has a JSON body, success or error, sets `Content-Type: application/json`
+  - [x] `DELETE` success returns 204 with an empty body (no JSON, so no JSON `Content-Type` is required)
   - [x] `POST /auth/register`: 201, 400 (validation, unknown field, malformed JSON, trailing JSON), 409, 413
   - [x] `POST /auth/login`: 200 with token, 400 (missing field, malformed JSON), 401 with the same body for wrong password and unknown email
-  - [ ] `GET /users`: 200 with `[]` when empty, 200 with users
-  - [ ] `GET /users/{id}`: 200, 400 malformed ID, 404 missing ID (D15)
-  - [ ] `PATCH /users/{id}`: 200, 400 (`{}`, unknown field such as `password`, invalid email, trailing JSON), 400 malformed ID, 404, 409, 413
-  - [ ] `DELETE /users/{id}`: 204 with empty body, 400 malformed ID, 404 missing ID, 404 on second delete
-  - [ ] Every `/users` route returns 401 without a valid token
-  - [ ] A repository failure returns 500 with a generic message that doesn't leak the internal error
+  - [x] `GET /users`: 200 with `[]` when empty, 200 with users
+  - [x] `GET /users/{id}`: 200, 400 malformed ID, 404 missing ID (D15)
+  - [x] `PATCH /users/{id}`: 200, 400 (`{}`, unknown field such as `password`, invalid email, trailing JSON), 400 malformed ID, 404, 409, 413
+  - [x] `DELETE /users/{id}`: 204 with empty body, 400 malformed ID, 404 missing ID, 404 on second delete
+  - [x] Every `/users` route returns 401 without a valid token
+  - [x] A repository failure returns 500 with a generic message that doesn't leak the internal error
 - [ ] Worker tests, deterministic with no `time.Sleep` and no real ticker (D16):
   - [ ] The test owns an unbuffered tick channel and runs `Run` in a goroutine with a `done` channel
   - [ ] Each unbuffered send blocks until the worker has taken the tick, so the test controls exactly how many ticks happen

@@ -51,6 +51,7 @@ func TestRegisterErrors(t *testing.T) {
 		{"wrong type", `{"name":123,"email":"alice@example.com","password":"s3cret-pass"}`, 400, `field "name" has the wrong type`},
 		{"array instead of object", `[]`, 400, "JSON object"},
 		{"too large", `{"name":"` + strings.Repeat("a", maxBodyBytes) + `"}`, 413, "at most 1048576 bytes"},
+		{"too large after the first value", aliceJSON + strings.Repeat(" ", maxBodyBytes), 413, "at most 1048576 bytes"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
