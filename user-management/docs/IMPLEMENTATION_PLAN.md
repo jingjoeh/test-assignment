@@ -12,7 +12,7 @@
 These are the answers to the open points in `requirements.md` §5. They are **decided assumptions**, not implementation tasks: they have no checkboxes, and nothing in Part A is "done" until the matching tasks in Parts B and C are ticked. Each one also goes into the README's "Assumptions & Design Decisions" section (B9).
 
 > **Status:** All assumptions in Part A are decided. Labels:
-> - **✅ Decided (Dn)**: discussed and decided one by one (D1–D17, D19–D21).
+> - **✅ Decided (Dn)**: discussed and decided one by one (D1–D17, D19–D22).
 > - **✅ Accepted default (D18)**: proposed in the first draft and accepted as a group without individual discussion.
 >
 > **Recommended ADRs (not yet written):**
@@ -43,6 +43,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 | D19 | Adapter package names | Keep `adapter/http` (package `http`) and `adapter/mongo` (package `mongo`). Importers that also need `net/http` or the Mongo driver use aliases `httpadapter` and `mongoadapter` | No |
 | D20 | JSON field naming | camelCase JSON keys (`id`, `name`, `email`, `createdAt`). The domain entity has no JSON tags; the HTTP adapter maps it to a DTO | No (README samples) |
 | D21 | Password maximum | Passwords are at most 72 bytes (bcrypt's input limit); longer ones are a 400 validation error, not a 500 | No (README note) |
+| D22 | Go version | Minimum Go is 1.26 (`go 1.26.0`), the oldest release that still gets security fixes; dependencies on their latest versions; Docker builds with `golang:1.27`. Supersedes the D18 default of Go 1.23 | No (README note) |
 
 ### A0. Architecture
 - Use hexagonal architecture (ports and adapters) from the first commit, not as a later refactor. ✅ Decided (D1)
@@ -52,13 +53,13 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - Adapter folders keep the names `adapter/http` and `adapter/mongo`, so their packages are `http` and `mongo`. A file that imports one of them together with `net/http` or the driver's `mongo` package aliases ours: `httpadapter ".../internal/adapter/http"` and `mongoadapter ".../internal/adapter/mongo"`. Use these two aliases everywhere for consistency. ✅ Decided (D19)
 
 ### A1. Tech stack
-- Go 1.23+, using Go modules (D4 needs at least 1.22 for `ServeMux` patterns). ✅ Accepted default (D18)
+- Go 1.26+ (`go 1.26.0` in `go.mod`). Go supports only its two newest releases (1.27 and 1.26 as of 2026-10); 1.23, the first-draft default, no longer gets security fixes and held the dependencies back. Since Go 1.21, an older local `go` downloads the required toolchain automatically, so a higher minimum rarely blocks anyone. The Docker image (C1) builds with `golang:1.27`. ✅ Decided (D22, supersedes the D18 default)
 - HTTP router: the standard library `net/http` (`ServeMux` with method and path patterns), so there is no framework dependency. Middleware is `func(http.Handler) http.Handler`, and small JSON helpers are written in `adapter/http`. ✅ Decided (D4)
 - MongoDB 7.x server. ✅ Accepted default (D18)
-- Official driver v2: `go.mongodb.org/mongo-driver/v2`, pinned to v2.8.x because v2.9+ requires Go 1.25 and would break the Go 1.23 floor. Only `adapter/mongo` imports it (D1). ✅ Decided (D13)
+- Official driver v2: `go.mongodb.org/mongo-driver/v2` (v2.9.2). Only `adapter/mongo` imports it (D1). ✅ Decided (D13)
 - JWT: `github.com/golang-jwt/jwt/v5` (v5.3.1). ✅ Accepted default (D18)
-- Password hashing: `golang.org/x/crypto/bcrypt`, pinned to x/crypto v0.41.0 because v0.42+ requires Go 1.24. ✅ Accepted default (D18)
-- Every dependency is pinned to the newest version that still supports Go 1.23; check a module's `go` directive before upgrading it
+- Password hashing: `golang.org/x/crypto/bcrypt` (x/crypto v0.58.0). ✅ Accepted default (D18)
+- Dependencies stay on their latest versions, as long as a module's own `go` directive doesn't exceed 1.26 (D22); check it before upgrading
 - Logging: the standard library `log/slog`, with JSON output to stdout. ✅ Accepted default (D18)
 - Configuration through environment variables: `PORT`, `MONGO_URI`, `MONGO_DB`, `JWT_SECRET` (at least 32 bytes, D17), `JWT_TTL` (default `1h`, D6), `JWT_ISSUER` (D6). ✅ Accepted default (D18)
 
@@ -137,7 +138,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 ## Part B — Mandatory Requirements
 
 ### B0. Project skeleton
-- [x] `go mod init github.com/jingjoeh/test-assignment/user-management` inside `user-management/` (D12), with the `go` directive pinned to `1.23` to match A1
+- [x] `go mod init github.com/jingjoeh/test-assignment/user-management` inside `user-management/` (D12), with the `go` directive pinned to the A1 minimum (now `1.26.0`, D22)
 - [x] Create the folder structure (the hexagonal layout is also bonus C6):
   ```
   user-management/
@@ -174,7 +175,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 
 ### B2. MongoDB integration (req. 4)
 - [x] `port.UserRepository` interface with `Create`, `GetByID`, `GetByEmail`, `List`, `Update`, `Delete`, `Count`. `Update` takes `port.UserUpdate{Name, Email *string}` (D7)
-- [x] Mongo adapter that implements the interface with the official driver (v2.8.2). `Update` uses `FindOneAndUpdate` so the change and the returned user are atomic
+- [x] Mongo adapter that implements the interface with the official driver (v2.9.2 since D22; re-verified against `mongo:7` after the upgrade). `Update` uses `FindOneAndUpdate` so the change and the returned user are atomic
 - [x] Create a unique index on `email` at startup (`EnsureIndexes`, idempotent; called from `main` in B8)
 - [x] Map duplicate-key errors to `ErrEmailExists` and `ErrNoDocuments` to `ErrNotFound`
 - [x] Map an invalid ObjectID hex string to `ErrInvalidID` (→ 400), and a valid ID with no document to `ErrNotFound` (→ 404) (D15). Parsing stays in `adapter/mongo`, so the domain keeps IDs as plain strings
@@ -395,6 +396,7 @@ Rules decided in D11:
 - [ ] All of Part B is ticked
 - [ ] `gofmt -l .` produces no output, and `go vet ./...` is clean
 - [ ] `go test -race -cover ./...` passes
+- [ ] `GOTOOLCHAIN=go1.26.0 go test -race ./...` passes, so the Go 1.26 minimum is real (D22; checked 2026-10-26 after the switch)
 - [ ] No secrets are committed (`.env` is git-ignored)
 - [ ] README tested from a fresh clone
 - [ ] Assumptions in the README match what was implemented

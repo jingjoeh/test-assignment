@@ -2,7 +2,7 @@
 
 ## Source of truth (in priority order)
 1. `../TEST-ASSIGNMENT.md`, section "User Management API": the original brief. If anything conflicts with it, the brief wins.
-2. `docs/IMPLEMENTATION_PLAN.md`: the plan. Decisions in Part A (D1–D21) are binding.
+2. `docs/IMPLEMENTATION_PLAN.md`: the plan. Decisions in Part A (D1–D22) are binding.
 3. `docs/requirements.md`: summary of the brief.
 
 Read the plan before starting any implementation work.
@@ -21,6 +21,11 @@ gofmt -l .
 go test -race -cover ./...
 ```
 
+Before finishing a phase, also run the suite on the minimum Go version, since the `go` line in `go.mod` doesn't stop calls to newer standard-library APIs:
+```sh
+GOTOOLCHAIN=go1.26.0 go test -race ./...
+```
+
 ## Hard rules
 - Hexagonal layers (D1): `domain` imports nothing; `service` imports only `domain` and `port`; only `adapter/mongo` imports the Mongo driver; `cmd/api` wires everything.
 - HTTP: stdlib `net/http` only (D4). No router or web framework.
@@ -28,4 +33,4 @@ go test -race -cover ./...
 - Users are created only by `AuthService.Register` (D14). There is no `POST /users` and no `UserService.Create`.
 - Import our adapters with the aliases `httpadapter` and `mongoadapter` wherever `net/http` or the Mongo driver is also imported (D19).
 - Don't add a dependency that isn't listed in Part A of the plan without asking first.
-- Keep the Go 1.23 floor: `go.mod` says `go 1.23.0`. Before adding or upgrading a module, check its own `go` directive and pick the newest version that still supports 1.23.
+- Minimum Go is 1.26 (D22): `go.mod` says `go 1.26.0`. Keep dependencies on their latest versions, but check a module's own `go` directive first and don't let an upgrade raise the minimum without asking.
