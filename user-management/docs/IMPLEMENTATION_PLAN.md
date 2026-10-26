@@ -26,7 +26,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 | D2 | Register vs create user | Only `POST /auth/register` (public). No `POST /users`. Registration covers "Create a new user" | No (README note) |
 | D3 | Authorization | Any authenticated user can read, update and delete any user. No ownership check, no roles | No (README note) |
 | D4 | HTTP router | Standard library `net/http` (`ServeMux` method and path patterns). No third-party router or framework | No (mention in ADR-001) |
-| D5 | Mocking strategy | Hand-written in-memory fakes that implement the port interfaces. No mock generator, no mocking library | No (README note) |
+| D5 | Mocking strategy | Hand-written in-memory fakes that implement the port interfaces. No mock generator, no mocking library. No MongoDB integration tests in the initial submission (reaffirmed 2026-10-26) | No (README note) |
 | D6 | JWT details | Access token only, default TTL 1h (env), claims `sub`, `iss`, `iat`, `exp` (no email), `iss` validated. No refresh token | No (README JWT guide) |
 | D7 | Update semantics | `PATCH /users/{id}`, partial update of `name` and/or `email`, at least one field. Password can't be changed | No (README note) |
 | D8 | List users | `GET /users` returns every user as a plain JSON array. No pagination | No (README note) |
@@ -124,7 +124,9 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - Unit tests use only the standard library `testing` package, with hand-written fakes and no mocking library or code generation. ✅ Decided (D5)
 - Mocking happens at the repository interface, so service and handler tests don't need a real MongoDB. ✅ Decided (D5)
 - The fake repository behaves like the real one where it matters (duplicate email → `ErrEmailExists`, missing ID → `ErrNotFound`) and has a settable error field so tests can force failures. ✅ Decided (D5)
-- Integration tests against a real MongoDB are out of scope. ✅ Decided (D5)
+- Integration tests against a real MongoDB are out of scope for the initial submission: no build tags, testcontainers, integration-test code or new dependencies. ✅ Decided (D5, reaffirmed 2026-10-26)
+  - Why: the brief asks for unit tests with appropriate mocking; service and HTTP behavior is covered through the repository fakes; the Mongo adapter and the unique index were verified manually against `mongo:7` in B2, B8 and after the D22 driver upgrade; and B9, C4 and C1 have higher priority than another test mode
+  - Consequence: `adapter/mongo` unit coverage stays low (about 11%: ID parsing, error mapping, document conversion). The README states this boundary so the number isn't read as an oversight
 - Coverage target is at least 70% for the domain, service and handler packages. ✅ Accepted default (D18)
 - Because mandatory requirement 7 needs MongoDB mocked, the interface abstraction (Bonus "Abstraction") gets built as part of the mandatory work. ✅ Decided (D1, D5, D10)
 
@@ -302,19 +304,21 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [x] `go run ./cmd/api` with a `JWT_SECRET` under 32 bytes exits with a clear error before connecting to Mongo (`TestRunRejectsShortSecretBeforeConnecting`, plus the B0 manual run)
 
 ### B9. Deliverables (documentation)
-- [ ] `user-management/README.md`
-  - [ ] Prerequisites and environment variables
-  - [ ] Setup and run instructions (local and Docker if C1 is done)
-  - [ ] How to run the tests
-- [ ] JWT guide: how to register or log in to get a token, how to send it in the `Authorization` header, the required claims, and how to generate a `JWT_SECRET` of at least 32 bytes (D17)
-- [ ] Sample requests and responses (curl) for every endpoint, including error examples
-- [ ] Requirement-to-endpoint table that maps each brief item to its endpoint, including "Create a new user" → `POST /auth/register` (D2)
-- [ ] Assumptions & Design Decisions section, copied from Part A and kept up to date
-- [ ] Known limitations section, including the authorization limitation from D3, no refresh token or revocation from D6, and no pagination from D8
-  - [ ] State explicitly: a token belonging to a deleted user stays valid until it expires, because tokens are stateless and there is no revocation (D6)
+- [x] `user-management/README.md`
+  - [x] Prerequisites and environment variables
+  - [x] Setup and run instructions (local and Docker if C1 is done)
+  - [x] How to run the tests
+  - [x] Testing boundary: what the unit tests cover (domain, services, HTTP handlers and middleware, JWT, bcrypt, worker, config) through hand-written fakes; that MongoDB is deliberately not exercised by `go test` (D5); and why `adapter/mongo` coverage is low
+  - [x] Manual MongoDB verification record: what was checked against `mongo:7` in Docker and when (B2 adapter checks, B8 end-to-end run of every endpoint, re-check after the driver v2.9.2 upgrade), including the unique email index, duplicate email, malformed vs missing ID, partial update, delete and re-register of a deleted email
+- [x] JWT guide: how to register or log in to get a token, how to send it in the `Authorization` header, the required claims, and how to generate a `JWT_SECRET` of at least 32 bytes (D17)
+- [x] Sample requests and responses (curl) for every endpoint, including error examples
+- [x] Requirement-to-endpoint table that maps each brief item to its endpoint, including "Create a new user" → `POST /auth/register` (D2)
+- [x] Assumptions & Design Decisions section, copied from Part A and kept up to date
+- [x] Known limitations section, including the authorization limitation from D3, no refresh token or revocation from D6, and no pagination from D8
+  - [x] State explicitly: a token belonging to a deleted user stays valid until it expires, because tokens are stateless and there is no revocation (D6)
 
 **Verify**
-- [ ] Following the README from a fresh clone, the app runs and the sample requests work as documented
+- [x] Following the README from a fresh clone, the app runs and the sample requests work as documented. Checked 2026-10-26 on a clone of `8e326ed` plus the new README: the documented test commands, the `export` lines and `go run ./cmd/api`, the Try-it steps and the samples all matched (port 8089 because 8080 is taken on this machine). The final checklist repeats this on a real clone after the README is committed
 
 ---
 
@@ -384,7 +388,7 @@ Rules decided in D11:
 
 ### C6. Hexagonal architecture
 - [ ] Domain depends on nothing. Services depend only on domain and ports. Adapters depend on ports and services. `cmd` wires everything together
-- [ ] The README has a short architecture section explaining the layers
+- [x] The README has a short architecture section explaining the layers
 
 **Verify**
 - [ ] `go list -deps` on `domain` and `service` shows no HTTP, Mongo or gRPC packages
@@ -400,3 +404,6 @@ Rules decided in D11:
 - [ ] No secrets are committed (`.env` is git-ignored)
 - [ ] README tested from a fresh clone
 - [ ] Assumptions in the README match what was implemented
+
+### Optional enhancement (only after the final checklist passes)
+- [ ] Reconsider MongoDB integration tests (D5) if time remains: for example a separate opt-in run against Docker, so the adapter checks done manually in B2 and B8 become repeatable. This needs a new decision first; it must not delay B9, C4 or C1
