@@ -236,15 +236,15 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [x] Every request, including public routes, error responses and requests rejected by the JWT middleware, produces exactly one log entry containing method, path, status code and duration (`TestRouterLogsEveryRequestOnce`: 200, 201, 204, 400, 401, 404, 405 and 500). A 500 additionally logs the error itself in a separate `request failed` entry
 
 ### B6. Concurrency task (req. 6)
-- [ ] Worker that takes a context, a tick channel (`<-chan time.Time`), a `Count` dependency (an interface) and a `*slog.Logger` (D16)
-- [ ] On each tick it calls `Count` and logs `total_users=<n>`; on error it logs the error and waits for the next tick
-- [ ] `Run` returns when the context is cancelled or the tick channel is closed
-- [ ] `main` creates the 10s `time.Ticker`, passes `ticker.C`, runs the worker in its own goroutine and stops the ticker on shutdown
+- [x] Worker that takes a context, a tick channel (`<-chan time.Time`), a `Count` dependency (an interface) and a `*slog.Logger` (D16): `worker.RunUserCount`, with `worker.UserCounter` (satisfied by `port.UserRepository`)
+- [x] On each tick it calls `Count` and logs `total_users=<n>` (INFO `user count`); on error it logs the error (ERROR `user count failed`) and waits for the next tick
+- [x] `Run` returns when the context is cancelled or the tick channel is closed
+- [ ] `main` creates the 10s `time.Ticker`, passes `ticker.C`, runs the worker in its own goroutine and stops the ticker on shutdown. Done with the rest of the wiring in B8
 
 **Verify**
-- [ ] Manual smoke check: after the app runs for about 30s, the log has about 3 user-count lines
-- [ ] Manual smoke check: registering a user changes the count in the next tick
-- [ ] The goroutine exits when the context is cancelled (checked by a deterministic test, B7)
+- [ ] Manual smoke check: after the app runs for about 30s, the log has about 3 user-count lines. Needs `main` wiring, so it is checked in B8
+- [ ] Manual smoke check: registering a user changes the count in the next tick. Needs `main` wiring, so it is checked in B8
+- [x] The goroutine exits when the context is cancelled (checked by a deterministic test, B7: `TestRunUserCountStopsOnCancel`; all worker tests pass 200 runs in a row under `-race`)
 
 ### B7. Testing (req. 7)
 - [x] Fake `UserRepository` (in `internal/fake`; an in-memory map with a settable error for failure cases, D5) for service and handler tests
@@ -280,12 +280,12 @@ These are the answers to the open points in `requirements.md` §5. They are **de
   - [x] `DELETE /users/{id}`: 204 with empty body, 400 malformed ID, 404 missing ID, 404 on second delete
   - [x] Every `/users` route returns 401 without a valid token
   - [x] A repository failure returns 500 with a generic message that doesn't leak the internal error
-- [ ] Worker tests, deterministic with no `time.Sleep` and no real ticker (D16):
-  - [ ] The test owns an unbuffered tick channel and runs `Run` in a goroutine with a `done` channel
-  - [ ] Each unbuffered send blocks until the worker has taken the tick, so the test controls exactly how many ticks happen
-  - [ ] After the last tick, the test cancels the context and waits for `done`; because `Run` has returned, all log writes are finished and the captured log (a `bytes.Buffer` behind the `slog` handler) can be asserted
-  - [ ] Cases: N ticks → N `total_users` lines with the fake counter's values; counter error → error logged and the next tick still counts; cancel → `Run` returns; closed tick channel → `Run` returns
-  - [ ] Waiting on `done` uses a generous `select` timeout only as a failsafe to fail the test, never to drive it
+- [x] Worker tests, deterministic with no `time.Sleep` and no real ticker (D16):
+  - [x] The test owns an unbuffered tick channel and runs `Run` in a goroutine with a `done` channel
+  - [x] Each unbuffered send blocks until the worker has taken the tick, so the test controls exactly how many ticks happen
+  - [x] After the last tick, the test cancels the context and waits for `done`; because `Run` has returned, all log writes are finished and the captured log (a `bytes.Buffer` behind the `slog` handler) can be asserted
+  - [x] Cases: N ticks → N `total_users` lines with the fake counter's values; counter error → error logged and the next tick still counts; cancel → `Run` returns; closed tick channel → `Run` returns
+  - [x] Waiting on `done` uses a generous `select` timeout only as a failsafe to fail the test, never to drive it
 
 **Verify**
 - [ ] `go test ./...` passes
