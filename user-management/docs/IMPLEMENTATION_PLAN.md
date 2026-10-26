@@ -398,13 +398,15 @@ Rules decided in D11:
 
 ## Final checklist before submitting
 
-- [ ] All of Part B is ticked
-- [ ] `gofmt -l .` produces no output, and `go vet ./...` is clean
-- [ ] `go test -race -cover ./...` passes
-- [ ] `GOTOOLCHAIN=go1.26.0 go test -race ./...` passes, so the Go 1.26 minimum is real (D22; checked 2026-10-26 after the switch)
-- [ ] No secrets are committed (`.env` is git-ignored)
-- [ ] README tested from a fresh clone
-- [ ] Assumptions in the README match what was implemented
+Run 2026-10-26 on a fresh clone of `c2a70fd`.
+
+- [x] All of Part B is ticked (0 open items)
+- [x] `gofmt -l .` produces no output, and `go vet ./...` is clean
+- [x] `go test -race -cover ./...` passes (`service` 100%, `worker` 100%, `adapter/http` 97.1%, `adapter/auth` 96.6%, `cmd/api` 41.1%, `adapter/mongo` 11.4% by design, D5)
+- [x] `GOTOOLCHAIN=go1.26.0 go test -race ./...` passes, so the Go 1.26 minimum is real (D22; checked 2026-10-26 after the switch)
+- [x] No secrets are committed (`.env` is git-ignored): whole history scanned. The only env file ever committed is `.env.example`; the only `JWT_SECRET` values are the `replace-me` placeholder and the README's `openssl` command; all 63 base64 strings are `go.sum` checksums; the one JWT is the expired README sample, signed with a throwaway secret that was never committed
+- [x] README tested from a fresh clone: both the Docker Compose path (build, start, try-it, duplicate → 409, graceful stop with exit 0) and the local Go path (exports, run, try-it, SIGINT shutdown sequence). Port 8090/8089 because 8080 is taken on this machine
+- [x] Assumptions in the README match what was implemented: 34 stated values and rules (limits, timeouts, defaults, JWT rules, Docker settings, versions, the 6 routes) checked against the source; all match
 
 ### Optional enhancement (only after the final checklist passes)
 - [ ] Reconsider MongoDB integration tests (D5) if time remains: for example a separate opt-in run against Docker, so the adapter checks done manually in B2 and B8 become repeatable. This needs a new decision first; it must not delay B9, C4 or C1
