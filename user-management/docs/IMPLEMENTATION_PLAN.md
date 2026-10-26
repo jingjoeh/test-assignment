@@ -2,16 +2,18 @@
 
 > Source of truth: [`TEST-ASSIGNMENT.md`](../../TEST-ASSIGNMENT.md), section "User Management API" (the original brief). If anything here conflicts with the brief, the brief wins.
 > Summary used for this plan: [`requirements.md`](./requirements.md)
-> Scope: plan only, no code. Tick each `[ ]` → `[x]` as it is done.
+> Scope: plan only, no code. Checkboxes appear only in Parts B, C and the final checklist, and mean implementation tasks: tick each `[ ]` → `[x]` as it is done. Part A has no checkboxes because it records decisions, not work.
 > Each phase ends with a **Verify** checklist that has to pass before the phase counts as done.
 
 ---
 
 ## Part A — Assumptions
 
-These are proposed answers to the open points in `requirements.md` §5. Confirm or change them before you start Part B. Each one also goes into the README's "Assumptions & Design Decisions" section (B9).
+These are the answers to the open points in `requirements.md` §5. They are **decided assumptions**, not implementation tasks: they have no checkboxes, and nothing in Part A is "done" until the matching tasks in Parts B and C are ticked. Each one also goes into the README's "Assumptions & Design Decisions" section (B9).
 
-> **Status:** Items marked ✅ were decided one by one (D1–D17). Unticked items in Part A are proposed defaults that were not discussed individually. Accept them, or raise objections, before starting B0.
+> **Status:** All assumptions in Part A are decided. Labels:
+> - **✅ Decided (Dn)**: discussed and decided one by one (D1–D17).
+> - **✅ Accepted default (D18)**: proposed in the first draft and accepted as a group without individual discussion.
 >
 > **Recommended ADRs (not yet written):**
 > - ADR-001: Adopt hexagonal architecture (D1), with sub-sections on choosing stdlib `net/http` over a framework (D4) and on services not calling each other, with `AuthService.Register` owning user creation (D14)
@@ -37,45 +39,46 @@ These are proposed answers to the open points in `requirements.md` §5. Confirm 
 | D15 | ID handling | Malformed ObjectID → 400 (`ErrInvalidID`). Well-formed ID that doesn't exist → 404 (`ErrNotFound`) | No (README note) |
 | D16 | Worker testability | The worker reads ticks from an injected channel, so tests drive it by hand with no sleeps and no real ticker | No |
 | D17 | Security hardening | Required JWT claims, `JWT_SECRET` of at least 32 bytes, HTTP server timeouts, 1 MiB request-body limit, trailing JSON rejected | No (README note) |
+| D18 | Remaining defaults | Every first-draft default in Part A that wasn't discussed individually is accepted as written | No |
 
-### A0. Architecture — ✅ Decided (D1)
-- [x] Use hexagonal architecture (ports and adapters) from the first commit, not as a later refactor
-- [x] Layers: `domain` (entities and errors, no dependencies) → `port` (interfaces) → `service` (application logic) → `adapter/http`, `adapter/mongo` (and later `adapter/grpc`) → `cmd/api` (wiring)
-- [x] Keep it to these core layers only, with no extra sub-layers, to avoid over-engineering
-- [x] Explain the reasoning in the README's architecture section (C6)
+### A0. Architecture
+- Use hexagonal architecture (ports and adapters) from the first commit, not as a later refactor. ✅ Decided (D1)
+- Layers: `domain` (entities and errors, no dependencies) → `port` (interfaces) → `service` (application logic) → `adapter/http`, `adapter/mongo` (and later `adapter/grpc`) → `cmd/api` (wiring). ✅ Decided (D1)
+- Keep it to these core layers only, with no extra sub-layers, to avoid over-engineering. ✅ Decided (D1)
+- Explain the reasoning in the README's architecture section (C6). ✅ Decided (D1)
 
 ### A1. Tech stack
-- [ ] Go 1.23+, using Go modules (D4 needs at least 1.22 for `ServeMux` patterns)
-- [x] HTTP router: the standard library `net/http` (`ServeMux` with method and path patterns), so there is no framework dependency. Middleware is `func(http.Handler) http.Handler`, and small JSON helpers are written in `adapter/http`. ✅ Decided (D4)
-- [ ] MongoDB 7.x server
-- [x] Official driver v2: `go.mongodb.org/mongo-driver/v2`. Only `adapter/mongo` imports it (D1). ✅ Decided (D13)
-- [ ] JWT: `github.com/golang-jwt/jwt/v5`
-- [ ] Password hashing: `golang.org/x/crypto/bcrypt`
-- [ ] Logging: the standard library `log/slog`, with JSON output to stdout
-- [ ] Configuration through environment variables: `PORT`, `MONGO_URI`, `MONGO_DB`, `JWT_SECRET` (at least 32 bytes, D17), `JWT_TTL` (default `1h`, D6), `JWT_ISSUER` (D6)
+- Go 1.23+, using Go modules (D4 needs at least 1.22 for `ServeMux` patterns). ✅ Accepted default (D18)
+- HTTP router: the standard library `net/http` (`ServeMux` with method and path patterns), so there is no framework dependency. Middleware is `func(http.Handler) http.Handler`, and small JSON helpers are written in `adapter/http`. ✅ Decided (D4)
+- MongoDB 7.x server. ✅ Accepted default (D18)
+- Official driver v2: `go.mongodb.org/mongo-driver/v2`. Only `adapter/mongo` imports it (D1). ✅ Decided (D13)
+- JWT: `github.com/golang-jwt/jwt/v5`. ✅ Accepted default (D18)
+- Password hashing: `golang.org/x/crypto/bcrypt`. ✅ Accepted default (D18)
+- Logging: the standard library `log/slog`, with JSON output to stdout. ✅ Accepted default (D18)
+- Configuration through environment variables: `PORT`, `MONGO_URI`, `MONGO_DB`, `JWT_SECRET` (at least 32 bytes, D17), `JWT_TTL` (default `1h`, D6), `JWT_ISSUER` (D6). ✅ Accepted default (D18)
 
 ### A2. User model
-- [ ] `ID` is a MongoDB `ObjectID`, exposed in the API as a hex string
-- [ ] `Email` is trimmed, lowercased and stored that way; uniqueness comes from a unique index on `email`
-- [ ] `Password` is a bcrypt hash at the default cost. It is never returned in any response
-- [ ] `CreatedAt` is stored in UTC and returned as RFC 3339
+- `ID` is a MongoDB `ObjectID`, exposed in the API as a hex string. ✅ Accepted default (D18)
+- `Email` is trimmed, lowercased and stored that way; uniqueness comes from a unique index on `email`. ✅ Accepted default (D18)
+- `Password` is a bcrypt hash at the default cost. It is never returned in any response. ✅ Accepted default (D18)
+- `CreatedAt` is stored in UTC and returned as RFC 3339. ✅ Accepted default (D18)
 
 ### A3. Authentication and authorization
-- [x] `POST /auth/register` is public and creates a user (name, email, password). ✅ Decided (D2)
-- [x] `AuthService.Register` is the sole owner of user creation: it validates input, normalizes the email, hashes the password, builds the `domain.User` (including `CreatedAt`) and calls `UserRepository.Create`. There is no `UserService.Create`, and no service calls another service. ✅ Decided (D14)
-- [ ] `POST /auth/login` is public. It takes email and password and returns `{ "token": "..." }`
-- [x] There is no separate `POST /users`. Registration is the only way to create a user and covers the brief's "Create a new user" (req. 3), because a protected create-user endpoint has no clear use case. ✅ Decided (D2)
-- [x] Known risk: a grader checking req. 3 item by item may look for a create endpoint under `/users`. Mitigation: the README maps "Create a new user" → `POST /auth/register` explicitly (B9). ✅ Decided (D2)
-- [ ] Every `/users` endpoint requires `Authorization: Bearer <token>`
-- [x] JWT claims are `sub` (user ID), `iss`, `iat` and `exp`. There is no `email` claim, so a token can't carry a stale email after an update. ✅ Decided (D6)
-- [x] The default TTL is 1h, configurable through `JWT_TTL`. ✅ Decided (D6)
-- [x] `iss` is set from `JWT_ISSUER` and checked on validation. A token with the wrong issuer is rejected. ✅ Decided (D6)
-- [x] All four claims are required on validation. A token missing `sub`, `iss`, `iat` or `exp`, or with an empty `sub`, is rejected with 401 even if its signature is valid. ✅ Decided (D17)
-- [x] There is no refresh token and no revocation. The README lists both under "Known limitations". ✅ Decided (D6)
-- [ ] Signing uses HS256 only. Tokens signed with any other `alg` are rejected
-- [x] The service refuses to start if `JWT_SECRET` is shorter than 32 bytes (256 bits, the HS256 key size), which also covers an empty or missing secret. `.env.example` shows a placeholder and how to generate a real one (e.g. `openssl rand -base64 32`). ✅ Decided (D17)
-- [x] Authorization: any authenticated user can manage any user. There is no ownership check and there are no roles; this matches the brief, which only asks to protect endpoints with JWT. ✅ Decided (D3)
-- [x] Known limitation: one user can update or delete another user. The README lists this under "Known limitations" and names ownership checks or roles as possible future work. ✅ Decided (D3)
+- `POST /auth/register` is public and creates a user (name, email, password). ✅ Decided (D2)
+- `AuthService.Register` is the sole owner of user creation: it validates input, normalizes the email, hashes the password, builds the `domain.User` (including `CreatedAt`) and calls `UserRepository.Create`. There is no `UserService.Create`, and no service calls another service. ✅ Decided (D14)
+- `POST /auth/login` is public. It takes email and password and returns `{ "token": "..." }`. ✅ Accepted default (D18)
+- There is no separate `POST /users`. Registration is the only way to create a user and covers the brief's "Create a new user" (req. 3), because a protected create-user endpoint has no clear use case. ✅ Decided (D2)
+- Known risk: a grader checking req. 3 item by item may look for a create endpoint under `/users`. Mitigation: the README maps "Create a new user" → `POST /auth/register` explicitly (B9). ✅ Decided (D2)
+- Every `/users` endpoint requires `Authorization: Bearer <token>`. ✅ Accepted default (D18)
+- JWT claims are `sub` (user ID), `iss`, `iat` and `exp`. There is no `email` claim, so a token can't carry a stale email after an update. ✅ Decided (D6)
+- The default TTL is 1h, configurable through `JWT_TTL`. ✅ Decided (D6)
+- `iss` is set from `JWT_ISSUER` and checked on validation. A token with the wrong issuer is rejected. ✅ Decided (D6)
+- All four claims are required on validation. A token missing `sub`, `iss`, `iat` or `exp`, or with an empty `sub`, is rejected with 401 even if its signature is valid. ✅ Decided (D17)
+- There is no refresh token and no revocation. The README lists both under "Known limitations". ✅ Decided (D6)
+- Signing uses HS256 only. Tokens signed with any other `alg` are rejected. ✅ Accepted default (D18)
+- The service refuses to start if `JWT_SECRET` is shorter than 32 bytes (256 bits, the HS256 key size), which also covers an empty or missing secret. `.env.example` shows a placeholder and how to generate a real one (e.g. `openssl rand -base64 32`). ✅ Decided (D17)
+- Authorization: any authenticated user can manage any user. There is no ownership check and there are no roles; this matches the brief, which only asks to protect endpoints with JWT. ✅ Decided (D3)
+- Known limitation: one user can update or delete another user. The README lists this under "Known limitations" and names ownership checks or roles as possible future work. ✅ Decided (D3)
 
 ### A4. REST API contract
 
@@ -88,40 +91,40 @@ These are proposed answers to the open points in `requirements.md` §5. Confirm 
 | PATCH | `/users/{id}` | JWT | 200 + user |
 | DELETE | `/users/{id}` | JWT | 204 |
 
-- [x] PATCH is a partial update: `name`, `email` or both. At least one field is required; an empty body or `{}` returns 400. ✅ Decided (D7)
-- [x] The request DTO uses pointer fields (`*string`) to tell "field not sent" apart from "field sent as empty". ✅ Decided (D7)
-- [x] The password cannot be changed through this endpoint or any other. ✅ Decided (D7)
-- [x] Unknown fields in the body (e.g. `password` on PATCH) are rejected with 400. ✅ Decided (D11)
-- [x] `GET /users` returns every user as a plain JSON array (`[...]`, `[]` when empty) with no pagination, as the brief says ("list all"). ✅ Decided (D8)
-- [x] Pagination is listed in the README under "Known limitations" as future work. ✅ Decided (D8)
-- [x] Delete is a hard delete: the document is removed from the collection, and there is no `DeletedAt` field. ✅ Decided (D9)
-- [x] `DELETE /users/{id}` returns `204` on success and `404` when the ID doesn't exist, including a second delete of the same ID. ✅ Decided (D9)
-- [x] For every `/users/{id}` route (GET, PATCH, DELETE), a malformed ObjectID returns `400`, and a well-formed ID with no matching user returns `404`. ✅ Decided (D15)
-- [x] Request bodies are limited to 1 MiB; a larger body returns `413`. ✅ Decided (D17)
-- [x] A body with extra data after the first JSON value (e.g. `{"name":"a"}{"name":"b"}`) returns `400`. ✅ Decided (D17)
-- [ ] Error format is `{ "error": "<message>" }`. Status codes: 400 validation, malformed JSON or malformed ID; 401 auth; 404 not found; 409 duplicate email; 413 body too large; 500 internal (generic message, details only in the log)
+- PATCH is a partial update: `name`, `email` or both. At least one field is required; an empty body or `{}` returns 400. ✅ Decided (D7)
+- The request DTO uses pointer fields (`*string`) to tell "field not sent" apart from "field sent as empty". ✅ Decided (D7)
+- The password cannot be changed through this endpoint or any other. ✅ Decided (D7)
+- Unknown fields in the body (e.g. `password` on PATCH) are rejected with 400. ✅ Decided (D11)
+- `GET /users` returns every user as a plain JSON array (`[...]`, `[]` when empty) with no pagination, as the brief says ("list all"). ✅ Decided (D8)
+- Pagination is listed in the README under "Known limitations" as future work. ✅ Decided (D8)
+- Delete is a hard delete: the document is removed from the collection, and there is no `DeletedAt` field. ✅ Decided (D9)
+- `DELETE /users/{id}` returns `204` on success and `404` when the ID doesn't exist, including a second delete of the same ID. ✅ Decided (D9)
+- For every `/users/{id}` route (GET, PATCH, DELETE), a malformed ObjectID returns `400`, and a well-formed ID with no matching user returns `404`. ✅ Decided (D15)
+- Request bodies are limited to 1 MiB; a larger body returns `413`. ✅ Decided (D17)
+- A body with extra data after the first JSON value (e.g. `{"name":"a"}{"name":"b"}`) returns `400`. ✅ Decided (D17)
+- Error format is `{ "error": "<message>" }`. Status codes: 400 validation, malformed JSON or malformed ID; 401 auth; 404 not found; 409 duplicate email; 413 body too large; 500 internal (generic message, details only in the log). ✅ Accepted default (D18)
 
 ### A5. Middleware and background task
-- [ ] The logging middleware logs method, path, status code and duration. Status code goes beyond what the brief asks for
-- [ ] The user-count goroutine uses a `time.Ticker` at 10s, so the first log appears 10s after start. Errors are logged and it keeps running. It stops when the root context is cancelled
-- [x] The worker doesn't create its own ticker. It receives ticks from an injected `<-chan time.Time`: `main` passes `ticker.C`, and tests pass a channel they control. ✅ Decided (D16)
+- The logging middleware logs method, path, status code and duration. Status code goes beyond what the brief asks for. ✅ Accepted default (D18)
+- The user-count goroutine runs every 10s, so the first log appears 10s after start. Errors are logged and it keeps running. It stops when the root context is cancelled. ✅ Accepted default (D18)
+- The worker doesn't create its own ticker. It receives ticks from an injected `<-chan time.Time`: `main` passes `ticker.C`, and tests pass a channel they control. ✅ Decided (D16)
 
-### A5a. HTTP server hardening — ✅ Decided (D17)
-- [x] `http.Server` sets `ReadHeaderTimeout` 5s, `ReadTimeout` 10s, `WriteTimeout` 10s and `IdleTimeout` 60s. No server runs with the zero-value (unlimited) timeouts
-- [x] Values are constants in `cmd/api`, not env vars, since the brief doesn't need them configurable
+### A5a. HTTP server hardening
+- `http.Server` sets `ReadHeaderTimeout` 5s, `ReadTimeout` 10s, `WriteTimeout` 10s and `IdleTimeout` 60s. No server runs with the zero-value (unlimited) timeouts. ✅ Decided (D17)
+- Values are constants in `cmd/api`, not env vars, since the brief doesn't need them configurable. ✅ Decided (D17)
 
 ### A6. Testing
-- [x] Unit tests use only the standard library `testing` package, with hand-written fakes and no mocking library or code generation. ✅ Decided (D5)
-- [x] Mocking happens at the repository interface, so service and handler tests don't need a real MongoDB. ✅ Decided (D5)
-- [x] The fake repository behaves like the real one where it matters (duplicate email → `ErrEmailExists`, missing ID → `ErrNotFound`) and has a settable error field so tests can force failures. ✅ Decided (D5)
-- [x] Integration tests against a real MongoDB are out of scope. ✅ Decided (D5)
-- [ ] Coverage target is at least 70% for the domain, service and handler packages
-- [x] Because mandatory requirement 7 needs MongoDB mocked, the interface abstraction (Bonus "Abstraction") gets built as part of the mandatory work. ✅ Decided (D1, D5, D10)
+- Unit tests use only the standard library `testing` package, with hand-written fakes and no mocking library or code generation. ✅ Decided (D5)
+- Mocking happens at the repository interface, so service and handler tests don't need a real MongoDB. ✅ Decided (D5)
+- The fake repository behaves like the real one where it matters (duplicate email → `ErrEmailExists`, missing ID → `ErrNotFound`) and has a settable error field so tests can force failures. ✅ Decided (D5)
+- Integration tests against a real MongoDB are out of scope. ✅ Decided (D5)
+- Coverage target is at least 70% for the domain, service and handler packages. ✅ Accepted default (D18)
+- Because mandatory requirement 7 needs MongoDB mocked, the interface abstraction (Bonus "Abstraction") gets built as part of the mandatory work. ✅ Decided (D1, D5, D10)
 
 ### A7. Repository layout
-- [x] All code and documentation for this part live under `user-management/`. That folder has its own `README.md` and `go.mod`. ✅ Decided (D12)
-- [x] The module path is based on the GitHub repo rather than a short local name. ✅ Decided (D12)
-- [x] Module path: `github.com/jingjoeh/test-assignment/user-management`. The GitHub repo was renamed from the misspelled `test-assingment` before any code was written. ✅ Decided (D12)
+- All code and documentation for this part live under `user-management/`. That folder has its own `README.md` and `go.mod`. ✅ Decided (D12)
+- The module path is based on the GitHub repo rather than a short local name. ✅ Decided (D12)
+- Module path: `github.com/jingjoeh/test-assignment/user-management`. The GitHub repo was renamed from the misspelled `test-assingment` before any code was written. ✅ Decided (D12)
 
 ---
 
@@ -195,6 +198,8 @@ These are proposed answers to the open points in `requirements.md` §5. Confirm 
   - [ ] Uses `DisallowUnknownFields`, so unknown fields return 400 (D11)
   - [ ] After decoding one value, checks that the rest of the body is empty (a second `Decode` must return `io.EOF`); otherwise 400 (D17)
   - [ ] Malformed or empty JSON returns 400
+- [ ] One shared JSON response helper that sets `Content-Type: application/json` before writing the status, used for every JSON success and error response
+- [ ] `DELETE` success writes `204` with no body and doesn't go through the JSON response helper
 
 **Verify**
 - [ ] Each of the five operations works end-to-end with curl (create = `POST /auth/register`)
@@ -203,13 +208,14 @@ These are proposed answers to the open points in `requirements.md` §5. Confirm 
 - [ ] Get, update or delete on a well-formed but missing ID returns 404, and on a malformed ID returns 400 (D15)
 - [ ] A body over 1 MiB returns 413, and a body with trailing JSON returns 400 (D17)
 - [ ] No response contains a password or hash
+- [ ] End-to-end against the running application and MongoDB: register a user, delete it, then register again with the same email; the second registration returns 201 (D9: hard delete frees the unique email)
 
 ### B5. Logging middleware (req. 5)
 - [ ] Middleware that records start time, wraps `ResponseWriter` to capture the status, and logs method, path, status and duration
 - [ ] Applied to every route, public ones included
 
 **Verify**
-- [ ] Every request produces one log line containing method, path and duration
+- [ ] Every request, including public routes, error responses and requests rejected by the JWT middleware, produces exactly one log entry containing method, path, status code and duration
 
 ### B6. Concurrency task (req. 6)
 - [ ] Worker that takes a context, a tick channel (`<-chan time.Time`), a `Count` dependency (an interface) and a `*slog.Logger` (D16)
@@ -235,7 +241,8 @@ These are proposed answers to the open points in `requirements.md` §5. Confirm 
   - [ ] Get: success, `ErrNotFound`, `ErrInvalidID`
   - [ ] List: empty repository returns an empty (non-nil) slice; several users are all returned
   - [ ] Update: name only, email only, both, no fields → `ErrValidation`, duplicate email → `ErrEmailExists`, updating to the user's own current email succeeds, email normalized, `ErrNotFound`, `ErrInvalidID`
-  - [ ] Update and Delete leave `CreatedAt` and the password hash unchanged
+  - [ ] Update leaves `CreatedAt` and `PasswordHash` unchanged
+  - [ ] Delete removes the user document: a later Get of the same ID returns `ErrNotFound` (D9)
   - [ ] Delete: success, `ErrNotFound`, `ErrInvalidID`
   - [ ] Every method passes repository errors through
 - [ ] Token tests: issue then validate, expired token, tampered token, wrong alg (including `none`), wrong issuer, wrong secret, and each required claim missing (D17)
@@ -243,7 +250,9 @@ These are proposed answers to the open points in `requirements.md` §5. Confirm 
   - [ ] JWT: missing header, header without `Bearer `, empty token, invalid token, valid token puts the user ID in the request context
   - [ ] Logging: method, path, status and duration are logged, including when the handler never calls `WriteHeader` (status 200)
 - [ ] Handler tests with `httptest`, for every route:
-  - [ ] Success status and JSON body; `Content-Type: application/json`; no `password` or hash field in any response
+  - [ ] Success status and JSON body; no `password` or hash field in any response
+  - [ ] Every response that has a JSON body, success or error, sets `Content-Type: application/json`
+  - [ ] `DELETE` success returns 204 with an empty body (no JSON, so no JSON `Content-Type` is required)
   - [ ] `POST /auth/register`: 201, 400 (validation, unknown field, malformed JSON, trailing JSON), 409, 413
   - [ ] `POST /auth/login`: 200 with token, 400 (missing field, malformed JSON), 401 with the same body for wrong password and unknown email
   - [ ] `GET /users`: 200 with `[]` when empty, 200 with users
@@ -252,8 +261,6 @@ These are proposed answers to the open points in `requirements.md` §5. Confirm 
   - [ ] `DELETE /users/{id}`: 204 with empty body, 400 malformed ID, 404 missing ID, 404 on second delete
   - [ ] Every `/users` route returns 401 without a valid token
   - [ ] A repository failure returns 500 with a generic message that doesn't leak the internal error
-- [ ] Update tests: name only, email only, both, empty body, duplicate email, missing ID (D7)
-- [ ] Delete tests: success returns 204, missing ID returns 404, deleting twice returns 404 the second time, and a deleted email can register again (D9)
 - [ ] Worker tests, deterministic with no `time.Sleep` and no real ticker (D16):
   - [ ] The test owns an unbuffered tick channel and runs `Run` in a goroutine with a `done` channel
   - [ ] Each unbuffered send blocks until the worker has taken the tick, so the test controls exactly how many ticks happen
