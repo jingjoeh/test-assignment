@@ -180,7 +180,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [x] Map an invalid ObjectID hex string to `ErrInvalidID` (→ 400), and a valid ID with no document to `ErrNotFound` (→ 404) (D15). Parsing stays in `adapter/mongo`, so the domain keeps IDs as plain strings
 - [x] Use a context with a timeout on every DB call
 - [x] Connect at startup with a ping check (`Connect`)
-- [ ] Disconnect on shutdown (wired in `main`, B8)
+- [ ] Disconnect on shutdown. Deferred in `run` since B8, but `run` only returns cleanly once C4 handles signals, so it is checked in C4
 
 **Verify**
 - [x] When run against a local MongoDB, a created user can be read back
@@ -219,14 +219,14 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [x] `PATCH` validates `email` with the same `validateEmail` as register, including the 254-byte limit (D11)
 
 **Verify**
-- [ ] Each of the five operations works end-to-end with curl (create = `POST /auth/register`). Needs `main` wiring, so it is checked in B8
+- [x] Each of the five operations works end-to-end with curl (create = `POST /auth/register`). Verified 2026-10-26 against the running binary and `mongo:7` in Docker
 - [x] Updating to an email that already exists returns 409
 - [x] PATCH with only `name`, only `email`, or both updates just those fields; PATCH with `{}` returns 400 (D7)
 - [x] Get, update or delete on a well-formed but missing ID returns 404, and on a malformed ID returns 400 (D15)
 - [x] A body over 1 MiB returns 413, and a body with trailing JSON returns 400 (D17)
 - [x] Tests: an unknown route returns a JSON 404; `GET /auth/login`, `PUT /users/{id}` and `POST /users/{id}` return a JSON 405 with the right `Allow` header
 - [x] No response contains a password or hash
-- [ ] End-to-end against the running application and MongoDB: register a user, delete it, then register again with the same email; the second registration returns 201 (D9: hard delete frees the unique email). Needs `main` wiring, so it is checked in B8
+- [x] End-to-end against the running application and MongoDB: register a user, delete it, then register again with the same email; the second registration returns 201 (D9: hard delete frees the unique email). Verified 2026-10-26 against the running binary and `mongo:7` in Docker
 
 ### B5. Logging middleware (req. 5)
 - [x] Middleware that records start time, wraps `ResponseWriter` to capture the status, and logs method, path, status and duration (`Logging`; fields `method`, `path`, `status`, `duration_ms`; the path excludes the query string)
@@ -239,11 +239,11 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [x] Worker that takes a context, a tick channel (`<-chan time.Time`), a `Count` dependency (an interface) and a `*slog.Logger` (D16): `worker.RunUserCount`, with `worker.UserCounter` (satisfied by `port.UserRepository`)
 - [x] On each tick it calls `Count` and logs `total_users=<n>` (INFO `user count`); on error it logs the error (ERROR `user count failed`) and waits for the next tick
 - [x] `Run` returns when the context is cancelled or the tick channel is closed
-- [ ] `main` creates the 10s `time.Ticker`, passes `ticker.C`, runs the worker in its own goroutine and stops the ticker on shutdown. Done with the rest of the wiring in B8
+- [x] `main` creates the 10s `time.Ticker`, passes `ticker.C`, runs the worker in its own goroutine and stops the ticker on shutdown (deferred in `run`; exercised on a real shutdown in C4)
 
 **Verify**
-- [ ] Manual smoke check: after the app runs for about 30s, the log has about 3 user-count lines. Needs `main` wiring, so it is checked in B8
-- [ ] Manual smoke check: registering a user changes the count in the next tick. Needs `main` wiring, so it is checked in B8
+- [x] Manual smoke check: after the app runs for about 30s, the log has about 3 user-count lines. Verified 2026-10-26 against the running binary and `mongo:7` in Docker: ticks exactly 10s apart
+- [x] Manual smoke check: registering a user changes the count in the next tick (0 → 2 after the curl run registered users). Verified 2026-10-26 against the running binary and `mongo:7` in Docker
 - [x] The goroutine exits when the context is cancelled (checked by a deterministic test, B7: `TestRunUserCountStopsOnCancel`; all worker tests pass 200 runs in a row under `-race`)
 
 ### B7. Testing (req. 7)
@@ -288,17 +288,17 @@ These are the answers to the open points in `requirements.md` §5. They are **de
   - [x] Waiting on `done` uses a generous `select` timeout only as a failsafe to fail the test, never to drive it
 
 **Verify**
-- [ ] `go test ./...` passes
-- [ ] `go test -race ./...` passes
-- [ ] `go test -cover ./...` meets the A6 target
+- [x] `go test ./...` passes
+- [x] `go test -race ./...` passes
+- [x] `go test -cover ./...` meets the A6 target (70% for domain, service and handler packages): `service` 100%, `adapter/http` 97.1%; `domain` has no statements
 
 ### B8. Wiring (`cmd/api`)
-- [ ] Load config, then connect Mongo, then build adapters, services, handlers and router, then start the worker, then start the HTTP server
-- [ ] Build `http.Server` with the timeouts from A5a (D17), never `http.ListenAndServe` with the default server
+- [x] Load config, then connect Mongo, then build adapters, services, handlers and router, then start the worker, then start the HTTP server (`run(ctx, logger, getenv)`; cleanup is deferred so C4 only has to add signal handling)
+- [x] Build `http.Server` with the timeouts from A5a (D17), never `http.ListenAndServe` with the default server (`newServer`, checked by `TestNewServerSetsTimeouts`)
 
 **Verify**
-- [ ] `go run ./cmd/api` starts and serves requests against a local MongoDB
-- [ ] `go run ./cmd/api` with a `JWT_SECRET` under 32 bytes exits with a clear error before connecting to Mongo
+- [x] `go run ./cmd/api` starts and serves requests against a local MongoDB. Verified 2026-10-26 against the running binary and `mongo:7` in Docker
+- [x] `go run ./cmd/api` with a `JWT_SECRET` under 32 bytes exits with a clear error before connecting to Mongo (`TestRunRejectsShortSecretBeforeConnecting`, plus the B0 manual run)
 
 ### B9. Deliverables (documentation)
 - [ ] `user-management/README.md`
