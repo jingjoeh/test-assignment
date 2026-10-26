@@ -2,7 +2,7 @@
 
 ## Source of truth (in priority order)
 1. `../TEST-ASSIGNMENT.md`, section "User Management API": the original brief. If anything conflicts with it, the brief wins.
-2. `docs/IMPLEMENTATION_PLAN.md`: the plan. Decisions in Part A (D1–D19) are binding.
+2. `docs/IMPLEMENTATION_PLAN.md`: the plan. Decisions in Part A (D1–D20) are binding.
 3. `docs/requirements.md`: summary of the brief.
 
 Read the plan before starting any implementation work.

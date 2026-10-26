@@ -12,7 +12,7 @@
 These are the answers to the open points in `requirements.md` §5. They are **decided assumptions**, not implementation tasks: they have no checkboxes, and nothing in Part A is "done" until the matching tasks in Parts B and C are ticked. Each one also goes into the README's "Assumptions & Design Decisions" section (B9).
 
 > **Status:** All assumptions in Part A are decided. Labels:
-> - **✅ Decided (Dn)**: discussed and decided one by one (D1–D17, D19).
+> - **✅ Decided (Dn)**: discussed and decided one by one (D1–D17, D19, D20).
 > - **✅ Accepted default (D18)**: proposed in the first draft and accepted as a group without individual discussion.
 >
 > **Recommended ADRs (not yet written):**
@@ -41,6 +41,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 | D17 | Security hardening | Required JWT claims, `JWT_SECRET` of at least 32 bytes, HTTP server timeouts, 1 MiB request-body limit, trailing JSON rejected | No (README note) |
 | D18 | Remaining defaults | Every first-draft default in Part A that wasn't discussed individually is accepted as written | No |
 | D19 | Adapter package names | Keep `adapter/http` (package `http`) and `adapter/mongo` (package `mongo`). Importers that also need `net/http` or the Mongo driver use aliases `httpadapter` and `mongoadapter` | No |
+| D20 | JSON field naming | camelCase JSON keys (`id`, `name`, `email`, `createdAt`). The domain entity has no JSON tags; the HTTP adapter maps it to a DTO | No (README samples) |
 
 ### A0. Architecture
 - Use hexagonal architecture (ports and adapters) from the first commit, not as a later refactor. ✅ Decided (D1)
@@ -64,6 +65,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - `Email` is trimmed, lowercased and stored that way; uniqueness comes from a unique index on `email`. ✅ Accepted default (D18)
 - `Password` is a bcrypt hash at the default cost. It is never returned in any response. ✅ Accepted default (D18)
 - `CreatedAt` is stored in UTC and returned as RFC 3339. ✅ Accepted default (D18)
+- JSON keys are camelCase: a user is returned as `{ "id", "name", "email", "createdAt" }`. `domain.User` has no JSON or BSON tags; `adapter/http` maps it to a response DTO that has no password field. ✅ Decided (D20)
 
 ### A3. Authentication and authorization
 - `POST /auth/register` is public and creates a user (name, email, password). ✅ Decided (D2)
@@ -158,12 +160,13 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [x] `go vet ./...` is clean
 
 ### B1. User model (req. 1)
-- [ ] `domain.User` with `ID`, `Name`, `Email`, `PasswordHash`, `CreatedAt`
-- [ ] Domain errors: `ErrNotFound`, `ErrInvalidID` (D15), `ErrEmailExists`, `ErrInvalidCredentials`, `ErrValidation`
+- [x] `domain.User` with `ID`, `Name`, `Email`, `PasswordHash`, `CreatedAt`
+- [x] Domain errors: `ErrNotFound`, `ErrInvalidID` (D15), `ErrEmailExists`, `ErrInvalidCredentials`, `ErrValidation` (wrapped with the specific problem via `fmt.Errorf("%w: ...", ErrValidation)`)
+- [x] Response DTO `userResponse` in `adapter/http` (D20)
 
 **Verify**
-- [ ] All five fields from the brief are present
-- [ ] The JSON response DTO has no password field
+- [x] All five fields from the brief are present
+- [x] The JSON response DTO has no password field (checked by `TestUserResponseJSON`: exact key set, no `password` and no hash in the output, `createdAt` in UTC)
 
 ### B2. MongoDB integration (req. 4)
 - [ ] `port.UserRepository` interface with `Create`, `GetByID`, `GetByEmail`, `List`, `Update`, `Delete`, `Count`
