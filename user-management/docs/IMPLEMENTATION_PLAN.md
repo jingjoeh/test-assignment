@@ -12,7 +12,7 @@
 These are the answers to the open points in `requirements.md` §5. They are **decided assumptions**, not implementation tasks: they have no checkboxes, and nothing in Part A is "done" until the matching tasks in Parts B and C are ticked. Each one also goes into the README's "Assumptions & Design Decisions" section (B9).
 
 > **Status:** All assumptions in Part A are decided. Labels:
-> - **✅ Decided (Dn)**: discussed and decided one by one (D1–D17, D19, D20).
+> - **✅ Decided (Dn)**: discussed and decided one by one (D1–D17, D19–D21).
 > - **✅ Accepted default (D18)**: proposed in the first draft and accepted as a group without individual discussion.
 >
 > **Recommended ADRs (not yet written):**
@@ -32,7 +32,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 | D8 | List users | `GET /users` returns every user as a plain JSON array. No pagination | No (README note) |
 | D9 | Delete semantics | Hard delete. `204` on success, `404` when the ID doesn't exist | No |
 | D10 | Bonus scope | Do C1, C3, C4 (C2 and C6 come with D1/D5). C5 gRPC is a stretch goal, only after Part B and the final checklist pass | No |
-| D11 | Validation rules | Length and format rules as in C3 (no password composition rules). Unknown JSON fields are rejected with 400 | No (README note) |
+| D11 | Validation rules | Length and format rules as in C3 (no password composition rules). Email at most 254 bytes after normalization, on register and update. Unknown JSON fields are rejected with 400 | No (README note) |
 | D12 | Go module | `go.mod` in `user-management/`, module path `github.com/jingjoeh/test-assignment/user-management` | No |
 | D13 | MongoDB driver | Official driver v2 (`go.mongodb.org/mongo-driver/v2`) | No |
 | D14 | User creation ownership | `AuthService.Register` is the only place that creates users. There is no `UserService.Create`, and services don't call each other | No (mention in ADR-001) |
@@ -42,6 +42,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 | D18 | Remaining defaults | Every first-draft default in Part A that wasn't discussed individually is accepted as written | No |
 | D19 | Adapter package names | Keep `adapter/http` (package `http`) and `adapter/mongo` (package `mongo`). Importers that also need `net/http` or the Mongo driver use aliases `httpadapter` and `mongoadapter` | No |
 | D20 | JSON field naming | camelCase JSON keys (`id`, `name`, `email`, `createdAt`). The domain entity has no JSON tags; the HTTP adapter maps it to a DTO | No (README samples) |
+| D21 | Password maximum | Passwords are at most 72 bytes (bcrypt's input limit); longer ones are a 400 validation error, not a 500 | No (README note) |
 
 ### A0. Architecture
 - Use hexagonal architecture (ports and adapters) from the first commit, not as a later refactor. ✅ Decided (D1)
@@ -55,8 +56,9 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - HTTP router: the standard library `net/http` (`ServeMux` with method and path patterns), so there is no framework dependency. Middleware is `func(http.Handler) http.Handler`, and small JSON helpers are written in `adapter/http`. ✅ Decided (D4)
 - MongoDB 7.x server. ✅ Accepted default (D18)
 - Official driver v2: `go.mongodb.org/mongo-driver/v2`, pinned to v2.8.x because v2.9+ requires Go 1.25 and would break the Go 1.23 floor. Only `adapter/mongo` imports it (D1). ✅ Decided (D13)
-- JWT: `github.com/golang-jwt/jwt/v5`. ✅ Accepted default (D18)
-- Password hashing: `golang.org/x/crypto/bcrypt`. ✅ Accepted default (D18)
+- JWT: `github.com/golang-jwt/jwt/v5` (v5.3.1). ✅ Accepted default (D18)
+- Password hashing: `golang.org/x/crypto/bcrypt`, pinned to x/crypto v0.41.0 because v0.42+ requires Go 1.24. ✅ Accepted default (D18)
+- Every dependency is pinned to the newest version that still supports Go 1.23; check a module's `go` directive before upgrading it
 - Logging: the standard library `log/slog`, with JSON output to stdout. ✅ Accepted default (D18)
 - Configuration through environment variables: `PORT`, `MONGO_URI`, `MONGO_DB`, `JWT_SECRET` (at least 32 bytes, D17), `JWT_TTL` (default `1h`, D6), `JWT_ISSUER` (D6). ✅ Accepted default (D18)
 
@@ -142,11 +144,13 @@ These are the answers to the open points in `requirements.md` §5. They are **de
   ├── cmd/api/                 # main: wiring, config, server start
   ├── internal/
   │   ├── domain/              # User entity, domain errors
-  │   ├── port/                # interfaces: UserRepository, PasswordHasher, TokenIssuer
+  │   ├── port/                # interfaces: UserRepository, PasswordHasher, TokenIssuer, TokenValidator
   │   ├── service/             # AuthService (register, login), UserService (get, list, update, delete)
   │   ├── adapter/
+  │   │   ├── auth/            # bcrypt hasher, HS256 JWT issuer/validator
   │   │   ├── http/            # handlers, middleware, DTOs
   │   │   └── mongo/           # repository implementation
+  │   ├── fake/                # in-memory fakes of the ports for tests (D5)
   │   └── worker/              # background user counter
   └── docs/
   ```
@@ -185,30 +189,34 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - Verified 2026-10-26 against `mongo:7` in Docker with a temporary build-tagged test (deleted afterwards, D5)
 
 ### B3. Authentication and JWT (req. 2)
-- [ ] Password hasher (bcrypt) behind an interface
-- [ ] Token issuer and validator (HS256 only, secret from config, `exp` and `iss` enforced, D6; `sub`, `iss`, `iat`, `exp` all required and `sub` non-empty, D17)
-- [ ] `AuthService.Register` (sole owner of user creation, D14): validate input, normalize the email, hash the password, set `CreatedAt`, call `UserRepository.Create` directly. It doesn't call `UserService`
-- [ ] `AuthService.Login`: look up by email, compare the hash, issue a token. Use the same error for an unknown email and a wrong password
-- [ ] JWT middleware: parse the `Bearer` header, validate the token, put the user ID in the request context, and return 401 on any failure
+- [x] Password hasher (bcrypt) behind an interface (`port.PasswordHasher`, `adapter/auth.BcryptHasher`)
+- [x] Token issuer and validator (`port.TokenIssuer` / `port.TokenValidator`, `adapter/auth.JWT`; HS256 only, secret from config, `exp` and `iss` enforced, D6; `sub`, `iss`, `iat`, `exp` all required and `sub` non-empty, D17)
+- [x] `AuthService.Register` (sole owner of user creation, D14): validate input, normalize the email, hash the password, set `CreatedAt`, call `UserRepository.Create` directly. It doesn't call `UserService`
+- [x] `AuthService.Login`: look up by email, compare the hash, issue a token. Use the same error for an unknown email and a wrong password. An unknown email is still compared against a dummy bcrypt hash, so response time doesn't reveal which emails exist
+- [x] `POST /auth/register` and `POST /auth/login` handlers and the router (`adapter/http`)
+- [x] JWT middleware: parse the `Bearer` header, validate the token, put the user ID in the request context, and return 401 on any failure
 
 **Verify**
-- [ ] Login with valid credentials returns a token that decodes with `alg: HS256`
-- [ ] Without a token, a protected route returns 401
-- [ ] An expired, tampered, wrong-alg or wrong-issuer token returns 401
-- [ ] A correctly signed token missing `sub`, `iss`, `iat` or `exp`, or with an empty `sub`, returns 401 (D17)
-- [ ] A wrong password and an unknown email return the same 401 response
+- [x] Login with valid credentials returns a token that decodes with `alg: HS256`
+- [ ] Without a token, a protected route returns 401. Can only be checked once B4 adds the protected `/users` routes; until then `RequireAuth` is covered by its unit test (B7)
+- [x] An expired, tampered, wrong-alg or wrong-issuer token returns 401
+- [x] A correctly signed token missing `sub`, `iss`, `iat` or `exp`, or with an empty `sub`, returns 401 (D17)
+- [x] A wrong password and an unknown email return the same 401 response
 
 ### B4. User operations (req. 3)
 - [ ] `UserService`: `Get`, `List`, `Update` (name and/or email), `Delete`. No `Create`: creation belongs to `AuthService.Register` (D14)
 - [ ] Handlers and routes for `/users` as in A4, all wrapped in the JWT middleware
-- [ ] Map domain errors to HTTP status codes in one place (`ErrInvalidID` → 400, `ErrNotFound` → 404, D15)
-- [ ] One shared JSON decode helper used by every handler that reads a body:
-  - [ ] Wraps the body in `http.MaxBytesReader` (1 MiB); exceeding it returns 413 (D17)
-  - [ ] Uses `DisallowUnknownFields`, so unknown fields return 400 (D11)
-  - [ ] After decoding one value, checks that the rest of the body is empty (a second `Decode` must return `io.EOF`); otherwise 400 (D17)
-  - [ ] Malformed or empty JSON returns 400
-- [ ] One shared JSON response helper that sets `Content-Type: application/json` before writing the status, used for every JSON success and error response
+- [x] Map domain errors to HTTP status codes in one place (`ErrInvalidID` → 400, `ErrNotFound` → 404, D15)
+- [x] One shared JSON decode helper used by every handler that reads a body:
+  - [x] Wraps the body in `http.MaxBytesReader` (1 MiB); exceeding it returns 413 (D17)
+  - [x] Uses `DisallowUnknownFields`, so unknown fields return 400 (D11)
+  - [x] After decoding one value, checks that the rest of the body is empty (a second `Decode` must return `io.EOF`); otherwise 400 (D17)
+  - [x] Malformed or empty JSON returns 400
+- [x] One shared JSON response helper that sets `Content-Type: application/json` before writing the status, used for every JSON success and error response
 - [ ] `DELETE` success writes `204` with no body and doesn't go through the JSON response helper
+- [ ] Unknown routes return a JSON 404 (`{"error": ...}`, `Content-Type: application/json`) instead of the `ServeMux` plain-text body
+- [ ] An unsupported method on a known route returns a JSON 405 and keeps the correct `Allow` header (e.g. `GET /auth/login` → 405, `Allow: POST`)
+- [ ] `PATCH` validates `email` with the same `validateEmail` as register, including the 254-byte limit (D11)
 
 **Verify**
 - [ ] Each of the five operations works end-to-end with curl (create = `POST /auth/register`)
@@ -216,6 +224,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [ ] PATCH with only `name`, only `email`, or both updates just those fields; PATCH with `{}` returns 400 (D7)
 - [ ] Get, update or delete on a well-formed but missing ID returns 404, and on a malformed ID returns 400 (D15)
 - [ ] A body over 1 MiB returns 413, and a body with trailing JSON returns 400 (D17)
+- [ ] Tests: an unknown route returns a JSON 404; `GET /auth/login`, `PUT /users/{id}` and `POST /users/{id}` return a JSON 405 with the right `Allow` header
 - [ ] No response contains a password or hash
 - [ ] End-to-end against the running application and MongoDB: register a user, delete it, then register again with the same email; the second registration returns 201 (D9: hard delete frees the unique email)
 
@@ -238,14 +247,14 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [ ] The goroutine exits when the context is cancelled (checked by a deterministic test, B7)
 
 ### B7. Testing (req. 7)
-- [ ] Fake `UserRepository` (an in-memory map with a settable error for failure cases, D5) for service and handler tests
-- [ ] Fakes for `PasswordHasher` and `TokenIssuer` where a test needs to isolate the service from bcrypt or JWT
-- [ ] `AuthService` tests:
-  - [ ] Register: success, duplicate email → `ErrEmailExists`, duplicate email differing only in case or surrounding spaces → `ErrEmailExists`, invalid input → `ErrValidation` with no repository call
-  - [ ] Register: the stored user has a bcrypt hash (not the plain password), a lowercased email and a non-zero UTC `CreatedAt`
-  - [ ] Register: a hasher error or repository error is returned and nothing is half-created
-  - [ ] Login: success returns a token whose `sub` is the user ID; email lookup is case-insensitive
-  - [ ] Login: wrong password and unknown email both return `ErrInvalidCredentials`; a repository error is not turned into `ErrInvalidCredentials`
+- [x] Fake `UserRepository` (in `internal/fake`; an in-memory map with a settable error for failure cases, D5) for service and handler tests
+- [x] Fakes for `PasswordHasher` and `TokenIssuer`/`TokenValidator` where a test needs to isolate the service from bcrypt or JWT
+- [x] `AuthService` tests:
+  - [x] Register: success, duplicate email → `ErrEmailExists`, duplicate email differing only in case or surrounding spaces → `ErrEmailExists`, invalid input → `ErrValidation` with no repository call
+  - [x] Register: the stored user has a bcrypt hash (not the plain password), a lowercased email and a non-zero UTC `CreatedAt`
+  - [x] Register: a hasher error or repository error is returned and nothing is half-created
+  - [x] Login: success returns a token whose `sub` is the user ID; email lookup is case-insensitive
+  - [x] Login: wrong password and unknown email both return `ErrInvalidCredentials`; a repository error is not turned into `ErrInvalidCredentials`
 - [ ] `UserService` tests:
   - [ ] Get: success, `ErrNotFound`, `ErrInvalidID`
   - [ ] List: empty repository returns an empty (non-nil) slice; several users are all returned
@@ -254,16 +263,17 @@ These are the answers to the open points in `requirements.md` §5. They are **de
   - [ ] Delete removes the user document: a later Get of the same ID returns `ErrNotFound` (D9)
   - [ ] Delete: success, `ErrNotFound`, `ErrInvalidID`
   - [ ] Every method passes repository errors through
-- [ ] Token tests: issue then validate, expired token, tampered token, wrong alg (including `none`), wrong issuer, wrong secret, and each required claim missing (D17)
+- [x] Bcrypt tests with the real hasher: a 72-byte password plus any suffix doesn't match (regression), plus an HTTP login test wired with the real hasher
+- [x] Token tests: issue then validate, expired token, tampered token, wrong alg (including `none`), wrong issuer, wrong secret, and each required claim missing (D17)
 - [ ] Middleware tests:
-  - [ ] JWT: missing header, header without `Bearer `, empty token, invalid token, valid token puts the user ID in the request context
+  - [x] JWT: missing header, wrong scheme, missing token, extra fields, invalid/expired/wrong-issuer token → 401; `bearer`/`BEARER`/mixed-case scheme and extra or surrounding whitespace are accepted; a valid token puts the user ID in the request context
   - [ ] Logging: method, path, status and duration are logged, including when the handler never calls `WriteHeader` (status 200)
 - [ ] Handler tests with `httptest`, for every route:
   - [ ] Success status and JSON body; no `password` or hash field in any response
   - [ ] Every response that has a JSON body, success or error, sets `Content-Type: application/json`
   - [ ] `DELETE` success returns 204 with an empty body (no JSON, so no JSON `Content-Type` is required)
-  - [ ] `POST /auth/register`: 201, 400 (validation, unknown field, malformed JSON, trailing JSON), 409, 413
-  - [ ] `POST /auth/login`: 200 with token, 400 (missing field, malformed JSON), 401 with the same body for wrong password and unknown email
+  - [x] `POST /auth/register`: 201, 400 (validation, unknown field, malformed JSON, trailing JSON), 409, 413
+  - [x] `POST /auth/login`: 200 with token, 400 (missing field, malformed JSON), 401 with the same body for wrong password and unknown email
   - [ ] `GET /users`: 200 with `[]` when empty, 200 with users
   - [ ] `GET /users/{id}`: 200, 400 malformed ID, 404 missing ID (D15)
   - [ ] `PATCH /users/{id}`: 200, 400 (`{}`, unknown field such as `password`, invalid email, trailing JSON), 400 malformed ID, 404, 409, 413
@@ -300,6 +310,7 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [ ] Requirement-to-endpoint table that maps each brief item to its endpoint, including "Create a new user" → `POST /auth/register` (D2)
 - [ ] Assumptions & Design Decisions section, copied from Part A and kept up to date
 - [ ] Known limitations section, including the authorization limitation from D3, no refresh token or revocation from D6, and no pagination from D8
+  - [ ] State explicitly: a token belonging to a deleted user stays valid until it expires, because tokens are stateless and there is no revocation (D6)
 
 **Verify**
 - [ ] Following the README from a fresh clone, the app runs and the sample requests work as documented
@@ -337,12 +348,13 @@ Order: C3 → C4 → C1, then C5 if there is time. C2 and C6 are checked as Part
 
 ### C3. Validation
 Rules decided in D11:
-- [ ] `name` required, trimmed, 1–100 characters
-- [ ] `email` required and a valid format (`net/mail.ParseAddress`)
-- [ ] `password` required, at least 8 characters, on register. No composition rules (uppercase, digit, symbol)
-- [ ] Login: `email` and `password` required (format and length are not checked, so a login never reveals the rules)
+- [x] `name` required, trimmed, 1–100 characters
+- [x] `email` required and a valid format (`net/mail.ParseAddress`, bare address only: `Alice <a@b.com>` is rejected)
+- [x] `email` at most 254 bytes (not characters), checked on the normalized (trimmed, lowercased) value (D11). Register uses it now; PATCH must use the same `validateEmail` (B4)
+- [x] `password` required, at least 8 characters and at most 72 bytes (D21), on register. No composition rules (uppercase, digit, symbol)
+- [x] Login: `email` and `password` required (format and length are not checked, so a login never reveals the rules)
 - [ ] PATCH needs at least one field, and each field present is validated
-- [ ] Unknown fields, malformed JSON, trailing JSON and oversized bodies are handled by the shared decode helper in B4 (D11, D17)
+- [x] Unknown fields, malformed JSON, trailing JSON and oversized bodies are handled by the shared decode helper in B4 (D11, D17)
 - [ ] Return 400 with a clear message
 
 **Verify**
