@@ -10,7 +10,8 @@ import (
 )
 
 // NewRouter returns the API's HTTP handler. Every /users route requires a
-// valid bearer token. The logging middleware is added in B5.
+// valid bearer token. Logging wraps everything, so every request is logged
+// once, including 401s from RequireAuth and the JSON 404/405 responses.
 func NewRouter(auth *service.AuthService, users *service.UserService, tokens port.TokenValidator, logger *slog.Logger) http.Handler {
 	ah := &authHandler{auth: auth, logger: logger}
 	uh := &userHandler{users: users, logger: logger}
@@ -23,7 +24,7 @@ func NewRouter(auth *service.AuthService, users *service.UserService, tokens por
 	mux.Handle("GET /users/{id}", protected(http.HandlerFunc(uh.get)))
 	mux.Handle("PATCH /users/{id}", protected(http.HandlerFunc(uh.update)))
 	mux.Handle("DELETE /users/{id}", protected(http.HandlerFunc(uh.delete)))
-	return jsonMuxErrors(mux)
+	return Logging(logger)(jsonMuxErrors(mux))
 }
 
 // jsonMuxErrors replaces ServeMux's plain-text 404 and 405 responses with the

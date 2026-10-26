@@ -229,11 +229,11 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 - [ ] End-to-end against the running application and MongoDB: register a user, delete it, then register again with the same email; the second registration returns 201 (D9: hard delete frees the unique email). Needs `main` wiring, so it is checked in B8
 
 ### B5. Logging middleware (req. 5)
-- [ ] Middleware that records start time, wraps `ResponseWriter` to capture the status, and logs method, path, status and duration
-- [ ] Applied to every route, public ones included
+- [x] Middleware that records start time, wraps `ResponseWriter` to capture the status, and logs method, path, status and duration (`Logging`; fields `method`, `path`, `status`, `duration_ms`; the path excludes the query string)
+- [x] Applied to every route, public ones included: it wraps the whole router, outside `RequireAuth` and the JSON 404/405 wrapper
 
 **Verify**
-- [ ] Every request, including public routes, error responses and requests rejected by the JWT middleware, produces exactly one log entry containing method, path, status code and duration
+- [x] Every request, including public routes, error responses and requests rejected by the JWT middleware, produces exactly one log entry containing method, path, status code and duration (`TestRouterLogsEveryRequestOnce`: 200, 201, 204, 400, 401, 404, 405 and 500). A 500 additionally logs the error itself in a separate `request failed` entry
 
 ### B6. Concurrency task (req. 6)
 - [ ] Worker that takes a context, a tick channel (`<-chan time.Time`), a `Count` dependency (an interface) and a `*slog.Logger` (D16)
@@ -265,9 +265,9 @@ These are the answers to the open points in `requirements.md` §5. They are **de
   - [x] Every method passes repository errors through
 - [x] Bcrypt tests with the real hasher: a 72-byte password plus any suffix doesn't match (regression), plus an HTTP login test wired with the real hasher
 - [x] Token tests: issue then validate, expired token, tampered token, wrong alg (including `none`), wrong issuer, wrong secret, and each required claim missing (D17)
-- [ ] Middleware tests:
+- [x] Middleware tests:
   - [x] JWT: missing header, wrong scheme, missing token, extra fields, invalid/expired/wrong-issuer token → 401; `bearer`/`BEARER`/mixed-case scheme and extra or surrounding whitespace are accepted; a valid token puts the user ID in the request context
-  - [ ] Logging: method, path, status and duration are logged, including when the handler never calls `WriteHeader` (status 200)
+  - [x] Logging: method, path, status and duration are logged, including when the handler never calls `WriteHeader` (status 200)
 - [x] Handler tests with `httptest`, for every route:
   - [x] Success status and JSON body; no `password` or hash field in any response
   - [x] Every response that has a JSON body, success or error, sets `Content-Type: application/json`
