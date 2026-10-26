@@ -12,7 +12,7 @@
 These are the answers to the open points in `requirements.md` §5. They are **decided assumptions**, not implementation tasks: they have no checkboxes, and nothing in Part A is "done" until the matching tasks in Parts B and C are ticked. Each one also goes into the README's "Assumptions & Design Decisions" section (B9).
 
 > **Status:** All assumptions in Part A are decided. Labels:
-> - **✅ Decided (Dn)**: discussed and decided one by one (D1–D17).
+> - **✅ Decided (Dn)**: discussed and decided one by one (D1–D17, D19).
 > - **✅ Accepted default (D18)**: proposed in the first draft and accepted as a group without individual discussion.
 >
 > **Recommended ADRs (not yet written):**
@@ -40,12 +40,14 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 | D16 | Worker testability | The worker reads ticks from an injected channel, so tests drive it by hand with no sleeps and no real ticker | No |
 | D17 | Security hardening | Required JWT claims, `JWT_SECRET` of at least 32 bytes, HTTP server timeouts, 1 MiB request-body limit, trailing JSON rejected | No (README note) |
 | D18 | Remaining defaults | Every first-draft default in Part A that wasn't discussed individually is accepted as written | No |
+| D19 | Adapter package names | Keep `adapter/http` (package `http`) and `adapter/mongo` (package `mongo`). Importers that also need `net/http` or the Mongo driver use aliases `httpadapter` and `mongoadapter` | No |
 
 ### A0. Architecture
 - Use hexagonal architecture (ports and adapters) from the first commit, not as a later refactor. ✅ Decided (D1)
 - Layers: `domain` (entities and errors, no dependencies) → `port` (interfaces) → `service` (application logic) → `adapter/http`, `adapter/mongo` (and later `adapter/grpc`) → `cmd/api` (wiring). ✅ Decided (D1)
 - Keep it to these core layers only, with no extra sub-layers, to avoid over-engineering. ✅ Decided (D1)
 - Explain the reasoning in the README's architecture section (C6). ✅ Decided (D1)
+- Adapter folders keep the names `adapter/http` and `adapter/mongo`, so their packages are `http` and `mongo`. A file that imports one of them together with `net/http` or the driver's `mongo` package aliases ours: `httpadapter ".../internal/adapter/http"` and `mongoadapter ".../internal/adapter/mongo"`. Use these two aliases everywhere for consistency. ✅ Decided (D19)
 
 ### A1. Tech stack
 - Go 1.23+, using Go modules (D4 needs at least 1.22 for `ServeMux` patterns). ✅ Accepted default (D18)
@@ -131,8 +133,8 @@ These are the answers to the open points in `requirements.md` §5. They are **de
 ## Part B — Mandatory Requirements
 
 ### B0. Project skeleton
-- [ ] `go mod init github.com/jingjoeh/test-assignment/user-management` inside `user-management/` (D12)
-- [ ] Create the folder structure (the hexagonal layout is also bonus C6):
+- [x] `go mod init github.com/jingjoeh/test-assignment/user-management` inside `user-management/` (D12), with the `go` directive pinned to `1.23` to match A1
+- [x] Create the folder structure (the hexagonal layout is also bonus C6):
   ```
   user-management/
   ├── cmd/api/                 # main: wiring, config, server start
@@ -146,12 +148,14 @@ These are the answers to the open points in `requirements.md` §5. They are **de
   │   └── worker/              # background user counter
   └── docs/
   ```
-- [ ] Config loader that reads the env vars from A1 and fails fast when a required value is missing or `JWT_SECRET` is shorter than 32 bytes (D17)
+- [x] Config loader that reads the env vars from A1 and fails fast when a required value is missing or `JWT_SECRET` is shorter than 32 bytes (D17)
+  - Required: `MONGO_URI`, `MONGO_DB`, `JWT_SECRET`, `JWT_ISSUER`. Defaults: `PORT=8080`, `JWT_TTL=1h` (must be a positive duration)
+  - All problems are reported together in one error
 
 **Verify**
-- [ ] Config tests: missing required var fails, 31-byte secret fails, 32-byte secret passes, `JWT_TTL` defaults to `1h` and rejects an invalid duration
-- [ ] `go build ./...` succeeds
-- [ ] `go vet ./...` is clean
+- [x] Config tests: missing required var fails, 31-byte secret fails, 32-byte secret passes, `JWT_TTL` defaults to `1h` and rejects an invalid duration
+- [x] `go build ./...` succeeds
+- [x] `go vet ./...` is clean
 
 ### B1. User model (req. 1)
 - [ ] `domain.User` with `ID`, `Name`, `Email`, `PasswordHash`, `CreatedAt`
